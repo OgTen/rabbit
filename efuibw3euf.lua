@@ -1720,11 +1720,19 @@ local function DrawTabRail()
             -- the expanded tabs fully inside the detached sidebar section.
             local sectionTabRightPad = 14
             local sectionTabW = math.max(1, sectionW - padX - sectionTabRightPad)
-            local narrowTabW = math.max(1, sectionTabW * 1.30)
+
+            -- Collapsed tabs are 30% larger overall, not just wider.
+            -- The scale eases back to the normal dimensions as the sidebar opens.
+            local collapsedScale = 1.30 - (0.30 * openAmt)
+            local narrowTabW = math.max(1, sectionTabW * collapsedScale)
             local wideTabW = sectionTabW
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
-            local hover = MouseIn(x, y, w, rowH)
+            local tabRowH = rowH * collapsedScale
+            local yOffset = (rowH - tabRowH) * 0.5
+            y = y + yOffset
+
+            local hover = MouseIn(x, y, w, tabRowH)
             local active = (State.ActiveIndex == i)
 
             -- animate states
@@ -1742,12 +1750,12 @@ local function DrawTabRail()
             -- This keeps every tab visually separated from the sidebar surface.
             local stateMix = tab.Hover * 0.65 + tab.Glow * 0.35
             local bgColor = mix(rgb(23, 27, 38), rgb(30, 35, 48), stateMix)
-            SolidSurface(x, y, w, rowH, bgColor, 40, 7)
+            SolidSurface(x, y, w, tabRowH, bgColor, 40, 7)
 
             -- slim active indicator, kept outside the icon/text area.
             if tab.Glow > 0.01 then
                 Rect(sectionX + 3, y + 6,
-                     2, rowH - 12,
+                     2, math.max(1, tabRowH - 12),
                      th.Accent, 42, 1, tab.Glow * 0.95)
             end
 
@@ -1757,17 +1765,19 @@ local function DrawTabRail()
             -- Interpolate the icon position continuously. In the collapsed
             -- state it is centered; as the rail opens it glides smoothly into
             -- the expanded left-aligned position instead of jumping at 50%.
-            local centeredIconX = x + math.max(0, (narrowTabW - iconSize) / 2)
+            local collapsedIconSize = iconSize * collapsedScale
+            local centeredIconX = x + math.max(0, (narrowTabW - collapsedIconSize) / 2)
             local expandedIconX = x + 11
             local iconX = centeredIconX + (expandedIconX - centeredIconX) * openAmt
-            local iconY = y + (rowH - iconSize) / 2
+            local drawIconSize = iconSize + (collapsedIconSize - iconSize) * (1 - openAmt)
+            local iconY = y + (tabRowH - drawIconSize) / 2
             local iconAlpha = 0.55 + 0.45 * math.max(tab.Glow, tab.Hover)
             local iconColor = tab.Glow > 0.5 and th.Accent or th.TextDim
 
-            if not DrawIconByName(tab.Icon, iconX, iconY, iconSize,
+            if not DrawIconByName(tab.Icon, iconX, iconY, drawIconSize,
                                   iconColor, 44, iconAlpha) then
                 -- fallback: small square mark
-                Rect(iconX + 3, iconY + 3, iconSize - 6, iconSize - 6,
+                Rect(iconX + 3, iconY + 3, math.max(1, drawIconSize - 6), math.max(1, drawIconSize - 6),
                      iconColor, 44, 2, iconAlpha)
             end
 
@@ -1775,7 +1785,7 @@ local function DrawTabRail()
             if openAmt > 0.02 then
                 local labelX = x + 36
                 local labelRoom = w - (labelX - x) - 6
-                local labelY = TextMidY(y, rowH, Layout.TextSize)
+                local labelY = TextMidY(y, tabRowH, Layout.TextSize)
                 local labelColor = th.Text
                 local labelAlpha = openAmt * (0.7 + 0.3 * math.max(tab.Glow, tab.Hover))
                 if tab.Glow > 0.5 then
@@ -1795,7 +1805,7 @@ local function DrawTabRail()
                 Input.Click = false
             end
 
-            rowY = rowY + rowH + tabGap
+            rowY = rowY + tabRowH + tabGap
         end
     end
 
