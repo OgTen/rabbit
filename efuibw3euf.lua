@@ -1074,6 +1074,7 @@ local State = {
     H = Layout.WindowH,
     Visible = 0,          -- 0..1 animation; hidden until CreateWindow starts startup
     Open = false,
+    Initialized = false,
 
     -- drag / resize
     Drag        = nil,    -- { GrabX, GrabY }
@@ -1698,16 +1699,16 @@ local function DrawStartupBranding()
 
     EnsureStartupLogo(st.LogoURL)
 
-    -- Keep this frame compact. The image is intentionally large inside the
-    -- short frame without increasing the frame height.
-    local logoSize = math.min(38, math.max(34, h - 18))
-    local titleSize = math.min(15, math.max(13, h * 0.24))
+    -- Fixed compact startup geometry. The logo never participates in sizing
+    -- the window, so a loaded image cannot make the loading frame taller.
+    local logoSize = 30
+    local titleSize = 14
     local title = "SHADOW UI"
     local titleW = TextWidth(title, titleSize, FontBold)
     local gap = 8
     local groupW = logoSize + gap + titleW
     local groupX = x + (w - groupW) / 2
-    local logoY = y + math.floor((h - logoSize) / 2) - 1
+    local logoY = y + math.floor((h - logoSize) / 2)
 
     -- Keep startup branding fully visible for the entire compact frame and
     -- expansion. The custom image may finish downloading after loading starts,
@@ -1729,22 +1730,25 @@ local function DrawStartupBranding()
          textColor, titleSize, FontBold, 32, fade, titleW + 2, false)
 
     if st.LogoData and not st.LogoImage then
+        local raw = st.LogoData
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
-            obj.Data = st.LogoData
+            obj.Visible = true
+            obj.ZIndex = 34
             obj.Position = Vector2.new(groupX, logoY)
             obj.Size = Vector2.new(logoSize, logoSize)
             obj.Transparency = 0
-            obj.Visible = true
-            obj.ZIndex = 34
+            obj.Data = raw
             return obj
         end)
         if ok and image then
             st.LogoImage = image
+            st.LogoData = nil
         else
-            st.LogoFailed = true
+            -- Keep the downloaded bytes for the next frame in case Matcha
+            -- was not ready to construct the Image object yet.
+            st.LogoFailed = false
         end
-        st.LogoData = nil
     end
 
     if st.LogoImage then
@@ -1764,7 +1768,7 @@ local function DrawStartupBranding()
     local barW = math.min(155, math.max(110, w - 30))
     local barH = 2
     local barX = x + (w - barW) / 2
-    local barY = y + h - 6
+    local barY = y + h - 5
     Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42 * fade)
     if st.Progress > 0 then
         Rect(barX, barY, math.max(1, barW * st.Progress), barH,
@@ -1853,8 +1857,8 @@ local function StartStartup(opts)
     st.TargetW, st.TargetH = State.W, State.H
     st.TargetX, st.TargetY = State.X, State.Y
 
-    st.StartW = math.min(260, math.max(230, st.TargetW * 0.34))
-    st.StartH = 54
+    st.StartW = 245
+    st.StartH = 48
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
@@ -4529,6 +4533,12 @@ end
 local LastHotkeyState = false
 
 local function Render()
+    -- Do absolutely nothing until CreateWindow initializes the UI. This
+    -- prevents the default full-size window from ever flashing on first load.
+    if not State.Initialized then
+        return
+    end
+
     -- The window starts fully visible. Open/close fading only changes this
     -- value after an actual visibility toggle; it must never inherit a stale
     -- fade state from a previous render.
@@ -4690,9 +4700,16 @@ function ShadowUI:CreateWindow(opts)
     if opts.Width then State.W = math.max(Layout.WindowMinW, tonumber(opts.Width) or State.W) end
     if opts.Height then State.H = math.max(Layout.WindowMinH, tonumber(opts.Height) or State.H) end
     if opts.MenuKey then State.MenuKey = string.lower(tostring(opts.MenuKey)) end
+    State.Initialized = true
     StartStartup({
         logo = opts.logo or opts.Logo,
         Duration = opts.StartupDuration or opts.Duration or 2.0,
+    })
+    self:Notify({
+        Title   = "Shadow UI loaded",
+        Content = "Press " .. string.upper(State.MenuKey) .. " to toggle",
+        Type    = "info",
+        Duration = 4,
     })
     return self
 end
