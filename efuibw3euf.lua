@@ -55,19 +55,19 @@ end
 local Themes = {
     {
         Name        = "Midnight",
-        Base        = rgb(18, 20, 29),      -- window background
-        Panel       = rgb(26, 29, 42),      -- control card background
-        PanelHi     = rgb(34, 38, 54),      -- hover/active panel
-        Stroke      = rgb(52, 57, 78),      -- panel borders
-        Divider     = rgb(40, 44, 62),
+        Base        = rgb(27, 30, 42),      -- window background
+        Panel       = rgb(37, 41, 56),      -- control card background
+        PanelHi     = rgb(48, 53, 70),      -- hover/active panel
+        Stroke      = rgb(67, 73, 96),      -- panel borders
+        Divider     = rgb(52, 57, 78),
         Text        = rgb(232, 234, 245),
-        TextDim     = rgb(170, 175, 194),
-        TextMuted   = rgb(118, 123, 145),
+        TextDim     = rgb(190, 195, 212),
+        TextMuted   = rgb(140, 146, 168),
         AccentA     = rgb(120, 140, 255),
         AccentB     = rgb(180, 130, 255),
         Accent      = rgb(150, 135, 255),
         AccentDim   = rgb(96, 90, 180),
-        Track       = rgb(45, 49, 68),
+        Track       = rgb(58, 63, 84),
         TrackFill   = rgb(120, 140, 255),
         Danger      = rgb(255, 96, 120),
         Warning     = rgb(255, 190, 90),
@@ -75,19 +75,19 @@ local Themes = {
     },
     {
         Name        = "Obsidian",
-        Base        = rgb(17, 18, 23),
-        Panel       = rgb(24, 25, 31),
-        PanelHi     = rgb(33, 35, 43),
-        Stroke      = rgb(48, 50, 63),
-        Divider     = rgb(37, 39, 50),
+        Base        = rgb(25, 27, 34),
+        Panel       = rgb(35, 37, 46),
+        PanelHi     = rgb(47, 50, 61),
+        Stroke      = rgb(63, 66, 81),
+        Divider     = rgb(49, 51, 64),
         Text        = rgb(228, 228, 235),
-        TextDim     = rgb(169, 170, 185),
-        TextMuted   = rgb(116, 117, 133),
+        TextDim     = rgb(188, 190, 205),
+        TextMuted   = rgb(139, 141, 157),
         AccentA     = rgb(120, 220, 210),
         AccentB     = rgb(90, 180, 240),
         Accent      = rgb(105, 200, 225),
         AccentDim   = rgb(70, 130, 160),
-        Track       = rgb(42, 43, 55),
+        Track       = rgb(56, 58, 72),
         TrackFill   = rgb(120, 220, 210),
         Danger      = rgb(255, 90, 110),
         Warning     = rgb(255, 180, 80),
@@ -95,11 +95,11 @@ local Themes = {
     },
     {
         Name        = "Burgundy",
-        Base        = rgb(28, 17, 22),
-        Panel       = rgb(38, 23, 30),
-        PanelHi     = rgb(49, 29, 38),
-        Stroke      = rgb(72, 43, 54),
-        Divider     = rgb(53, 32, 42),
+        Base        = rgb(38, 23, 30),
+        Panel       = rgb(50, 30, 39),
+        PanelHi     = rgb(64, 38, 49),
+        Stroke      = rgb(87, 52, 65),
+        Divider     = rgb(65, 39, 50),
         Text        = rgb(245, 232, 235),
         TextDim     = rgb(180, 150, 160),
         TextMuted   = rgb(120, 90, 100),
@@ -4175,14 +4175,15 @@ local function Render()
         return
     end
 
-    -- geometry
-    Geometry.Recalculate()
-
-    -- animate
+    -- animate/state updates first. Geometry must be calculated AFTER these
+    -- so every element uses the exact same window position for this frame.
     TickRailOpen(State.Delta)
     TickDrag(State.Delta)
     TickResize()
     TickTooltip(State.Delta)
+
+    -- geometry
+    Geometry.Recalculate()
 
     -- reset drawing pool for this frame
     ResetPool()
