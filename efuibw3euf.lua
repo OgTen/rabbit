@@ -549,7 +549,12 @@ local PrevWheel = 0
 
 local function ReadInput()
     Input.PrevX, Input.PrevY = Input.X, Input.Y
-    Input.X, Input.Y = Mouse.X, Mouse.Y
+
+    -- Some executors briefly expose nil mouse coordinates during startup or
+    -- while the game window is changing focus. Keep the renderer numeric.
+    local mx = tonumber(Mouse.X) or Input.PrevX or 0
+    local my = tonumber(Mouse.Y) or Input.PrevY or 0
+    Input.X, Input.Y = mx, my
     Input.DX = Input.X - Input.PrevX
     Input.DY = Input.Y - Input.PrevY
 
@@ -590,13 +595,17 @@ local function ReadInput()
 end
 
 local function MouseIn(x, y, w, h)
-    return Input.X >= x and Input.X <= x + w
-       and Input.Y >= y and Input.Y <= y + h
+    local mx = tonumber(Input.X) or 0
+    local my = tonumber(Input.Y) or 0
+    return mx >= x and mx <= x + w
+       and my >= y and my <= y + h
 end
 
 local function MouseInCircle(cx, cy, radius)
-    local dx = Input.X - cx
-    local dy = Input.Y - cy
+    local mx = tonumber(Input.X) or 0
+    local my = tonumber(Input.Y) or 0
+    local dx = mx - cx
+    local dy = my - cy
     return (dx * dx + dy * dy) <= (radius * radius)
 end
 
