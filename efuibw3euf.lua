@@ -1118,7 +1118,7 @@ end
 --  WINDOW GEOMETRY  --  derived every frame from State.X/Y/W/H
 -- ============================================================================
 
-local Geometry = { FooterH = 20 }
+local Geometry = { FooterH = 10 }
 
 function Geometry.Recalculate()
     Geometry.X = State.X
@@ -1134,7 +1134,7 @@ function Geometry.Recalculate()
     Geometry.RailX = State.X
     Geometry.RailY = State.Y + Geometry.TopH
     -- Reserve a compact footer strip at the bottom of the window.
-    Geometry.FooterH = 20
+    Geometry.FooterH = 10
     Geometry.RailH = math.max(1, State.H - Geometry.TopH - Geometry.FooterH)
 
     local wide = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
@@ -1620,18 +1620,51 @@ end
 -- ============================================================================
 
 local function TickRailOpen(dt)
-    -- Use the full expanded sidebar as the hover zone instead of the current
-    -- animated width. This prevents the cursor from falling outside the rail
-    -- while it is expanding, which was causing the open/close animation to
-    -- fight itself and look rough.
-    local hoverW = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
-    local inRail = MouseIn(State.X, Geometry.RailY,
-                           hoverW, Geometry.RailH)
+    -- Only the actual collapsed tab/icon area opens the rail.
+    -- The expanded width is intentionally NOT part of the initial trigger zone.
+    local sectionPadX = 7
+    local sectionPadY = 5
+    local narrowW = Layout.TabRailNarrow
+    local narrowSectionW = math.max(40, narrowW - sectionPadX * 2)
+    local triggerX = Geometry.RailX + sectionPadX
+    local triggerY = Geometry.RailY + sectionPadY + 11
+    local rowH = Layout.TabRowH
+    local tabGap = Layout.TabGap
 
-    local target = (State.RailPinned or inRail) and 1 or 0
+    local overCollapsedTab = false
+    local rowY = triggerY
+    for _, tab in ipairs(State.Tabs) do
+        if not tab.Hidden then
+            if MouseIn(triggerX, rowY, narrowSectionW, rowH) then
+                overCollapsedTab = true
+                break
+            end
+            rowY = rowY + rowH + tabGap
+        end
+    end
 
-    -- Slightly slower exponential approach gives the rail a softer, more
-    -- deliberate ease without introducing a second animation system.
+    -- Once the rail has started opening, the currently expanded tab can keep
+    -- it open. This prevents the cursor from falling through while the panel
+    -- is moving, without making the entire future sidebar a trigger zone.
+    local overExpandedTab = false
+    if State.RailOpen > 0.01 then
+        local sectionY = Geometry.RailY + sectionPadY
+        local sectionW = math.max(40, Geometry.RailW - sectionPadX * 2)
+        local y = sectionY + 11
+        for _, tab in ipairs(State.Tabs) do
+            if not tab.Hidden then
+                if MouseIn(Geometry.RailX + sectionPadX, y, sectionW, rowH) then
+                    overExpandedTab = true
+                    break
+                end
+                y = y + rowH + tabGap
+            end
+        end
+    end
+
+    local target = (State.RailPinned or overCollapsedTab or overExpandedTab) and 1 or 0
+
+    -- Smooth but responsive expansion.
     State.RailOpen = Approach(State.RailOpen, target, 7, dt)
     if math.abs(State.RailOpen - target) < 0.001 then
         State.RailOpen = target
@@ -1670,7 +1703,13 @@ local function DrawTabRail()
         if not tab.Hidden then
             local x = sectionX + padX
             local y = rowY
-            local w = math.max(1, sectionW - padX * 2)
+
+            -- The tab itself grows with the sidebar animation. There is no
+            -- separate width animation for the tab; it is driven directly by
+            -- the same RailOpen value as the navigation container.
+            local narrowTabW = math.max(1, Layout.TabRailNarrow - padX * 2)
+            local wideTabW = math.max(1, math.max(Layout.TabRailW, math.floor(State.W * 0.22)) - padX * 2)
+            local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
             local hover = MouseIn(x, y, w, rowH)
             local active = (State.ActiveIndex == i)
@@ -1702,12 +1741,9 @@ local function DrawTabRail()
             -- icon column. When the rail is collapsed there is no label, so
             -- center the icon in the entire tab instead of leaving it offset
             -- toward the old label position.
-            local iconX
-            if openAmt < 0.5 then
-                iconX = x + math.max(0, (w - iconSize) / 2)
-            else
-                iconX = x + 11
-            end
+            local centeredIconX = x + math.max(0, (narrowTabW - iconSize) / 2)
+            local expandedIconX = x + 11
+            local iconX = centeredIconX + (expandedIconX - centeredIconX) * openAmt
             local iconY = y + (rowH - iconSize) / 2
             local iconAlpha = 0.55 + 0.45 * math.max(tab.Glow, tab.Hover)
             local iconColor = tab.Glow > 0.5 and th.Accent or th.TextDim
@@ -1720,7 +1756,7 @@ local function DrawTabRail()
             end
 
             -- label
-            if openAmt > 0.02 then
+            if openAmt > 0.08 then
                 local labelX = x + 36
                 local labelRoom = w - (labelX - x) - 6
                 local labelY = TextMidY(y, rowH, Layout.TextSize)
