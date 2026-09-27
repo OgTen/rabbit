@@ -1620,18 +1620,58 @@ end
 -- ============================================================================
 
 local function TickRailOpen(dt)
-    -- Use the full expanded sidebar as the hover zone instead of the current
-    -- animated width. This prevents the cursor from falling outside the rail
-    -- while it is expanding, which was causing the open/close animation to
-    -- fight itself and look rough.
-    local hoverW = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
-    local inRail = MouseIn(State.X, Geometry.RailY,
-                           hoverW, Geometry.RailH)
+    -- Defensive guard for executors that begin the render callback before any
+    -- geometry pass has populated the derived rail coordinates.
+    if Geometry.RailX == nil or Geometry.RailY == nil
+       or Geometry.RailW == nil or Geometry.RailH == nil then
+        Geometry.Recalculate()
+    end
 
-    local target = (State.RailPinned or inRail) and 1 or 0
+    -- Only the actual collapsed tab/icon area opens the rail.
+    -- The expanded width is intentionally NOT part of the initial trigger zone.
+    local sectionPadX = 7
+    local sectionPadY = 5
+    local narrowW = Layout.TabRailNarrow
+    local narrowSectionW = math.max(40, narrowW - sectionPadX * 2)
+    local triggerX = Geometry.RailX + sectionPadX
+    local triggerY = Geometry.RailY + sectionPadY + 11
+    local rowH = Layout.TabRowH
+    local tabGap = Layout.TabGap
 
-    -- Slightly slower exponential approach gives the rail a softer, more
-    -- deliberate ease without introducing a second animation system.
+    local overCollapsedTab = false
+    local rowY = triggerY
+    for _, tab in ipairs(State.Tabs) do
+        if not tab.Hidden then
+            if MouseIn(triggerX, rowY, narrowSectionW, rowH) then
+                overCollapsedTab = true
+                break
+            end
+            rowY = rowY + rowH + tabGap
+        end
+    end
+
+    -- Once the rail has started opening, the currently expanded tab can keep
+    -- it open. This prevents the cursor from falling through while the panel
+    -- is moving, without making the entire future sidebar a trigger zone.
+    local overExpandedTab = false
+    if State.RailOpen > 0.01 then
+        local sectionY = Geometry.RailY + sectionPadY
+        local sectionW = math.max(40, Geometry.RailW - sectionPadX * 2)
+        local y = sectionY + 11
+        for _, tab in ipairs(State.Tabs) do
+            if not tab.Hidden then
+                if MouseIn(Geometry.RailX + sectionPadX, y, sectionW, rowH) then
+                    overExpandedTab = true
+                    break
+                end
+                y = y + rowH + tabGap
+            end
+        end
+    end
+
+    local target = (State.RailPinned or overCollapsedTab or overExpandedTab) and 1 or 0
+
+    -- Smooth but responsive expansion.
     State.RailOpen = Approach(State.RailOpen, target, 7, dt)
     if math.abs(State.RailOpen - target) < 0.001 then
         State.RailOpen = target
@@ -1653,7 +1693,9 @@ local function DrawTabRail()
     -- its own floating section. It is slightly larger than the previous build.
     local sectionPadX = 7
 
-    -- The sidebar itself stays anchored. Only its contents animate.
+    -- New sidebar motion: the detached navigation layer slides into place
+    -- while it expands. The rail geometry itself stays unchanged so hover,
+    -- clicking and the content layout remain stable throughout the animation.
     local sectionX = Geometry.RailX + sectionPadX
     local sectionY = Geometry.RailY + 5
     local sectionW = math.max(40, railW - sectionPadX * 2)
@@ -1673,7 +1715,9 @@ local function DrawTabRail()
             local x = sectionX + padX
             local y = rowY
 
-            -- Smoothly grow each tab with the rail without moving the rail.
+            -- The tab itself grows continuously with the sidebar animation.
+            -- This keeps the navigation feeling like one connected motion
+            -- instead of making the cards snap between collapsed/expanded sizes.
             local narrowTabW = math.max(1, Layout.TabRailNarrow - padX * 2)
             local wideTabW = math.max(1, math.max(Layout.TabRailW, math.floor(State.W * 0.22)) - padX * 2)
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
@@ -1708,6 +1752,9 @@ local function DrawTabRail()
             -- icon column. When the rail is collapsed there is no label, so
             -- center the icon in the entire tab instead of leaving it offset
             -- toward the old label position.
+            -- Interpolate the icon position continuously. In the collapsed
+            -- state it is centered; as the rail opens it glides smoothly into
+            -- the expanded left-aligned position instead of jumping at 50%.
             local centeredIconX = x + math.max(0, (narrowTabW - iconSize) / 2)
             local expandedIconX = x + 11
             local iconX = centeredIconX + (expandedIconX - centeredIconX) * openAmt
@@ -4346,16 +4393,18 @@ local function Render()
         return
     end
 
-    -- Establish geometry before the rail animation reads its coordinates.
+    -- TickRailOpen uses derived rail geometry. Establish a valid baseline
+    -- before any hover/animation math, including on the first render frame.
     Geometry.Recalculate()
 
-    -- animate/state updates
+    -- Animate/state updates.
     TickRailOpen(State.Delta)
     TickDrag(State.Delta)
     TickResize()
     TickTooltip(State.Delta)
 
-    -- geometry
+    -- Recalculate after state changes so rendering uses the final geometry
+    -- for this frame.
     Geometry.Recalculate()
 
     -- reset drawing pool for this frame
