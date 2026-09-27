@@ -1408,85 +1408,50 @@ local function DrawGlassBorder(th)
     local w, h = State.W, State.H
     local radius = math.min(Layout.Corner, math.max(2, math.min(w, h) / 2 - 1))
 
-    -- A single, restrained glass edge. The window remains one silhouette.
-    Stroke(x, y, w, h, th.Stroke, 20, Layout.Corner, 0.58)
-
-    -- Faint accent edge underneath the moving light.
-    Stroke(x + 1, y + 1, w - 2, h - 2, th.AccentDim, 20, math.max(1, Layout.Corner - 1), 0.22)
+    -- ONE visible window edge. Nothing else is drawn around the perimeter.
+    Stroke(x, y, w, h, th.Stroke, 20, radius, 0.78)
 
     if State.NoAnim then
         return
     end
 
-    -- The highlight travels around the complete rounded perimeter.
+    -- A single small highlight travels around the same border. It is a
+    -- light source on the edge, not another frame.
     local straightW = math.max(0, w - radius * 2)
     local straightH = math.max(0, h - radius * 2)
     local perimeter = 2 * straightW + 2 * straightH + 2 * math.pi * radius
-    local speed = 92
-    local distance = (os.clock() * speed) % perimeter
-
+    local distance = (os.clock() * 92) % perimeter
     local accent = mix(th.AccentA, th.AccentB, 0.5)
 
-    -- Short soft trail.
-    local tx1, ty1 = GlassBorderPoint(distance - 22, x, y, w, h, radius)
-    local tx2, ty2 = GlassBorderPoint(distance - 10, x, y, w, h, radius)
+    local tx1, ty1 = GlassBorderPoint(distance - 18, x, y, w, h, radius)
+    local tx2, ty2 = GlassBorderPoint(distance - 7, x, y, w, h, radius)
     local tx3, ty3 = GlassBorderPoint(distance, x, y, w, h, radius)
 
-    Circle(tx1, ty1, 5.5, accent, 21, true, 1, 20, 0.06)
-    Circle(tx2, ty2, 4.5, accent, 22, true, 1, 20, 0.12)
-    Circle(tx3, ty3, 2.2, Color3.new(1, 1, 1), 23, true, 1, 16, 0.92)
+    Circle(tx1, ty1, 4.5, accent, 21, true, 1, 16, 0.05)
+    Circle(tx2, ty2, 3.2, accent, 22, true, 1, 16, 0.12)
+    Circle(tx3, ty3, 1.8, Color3.new(1, 1, 1), 23, true, 1, 12, 0.95)
 end
 
 local function DrawFrame()
     local th = State.Theme
 
-    -- Soft outer shadow. It stays outside the glass shell and never creates
-    -- another visible frame.
-    if not State.NoAnim then
-        local shadowSteps = 4
-        for i = shadowSteps, 1, -1 do
-            local pad = i * 2
-            Rect(State.X - pad, State.Y - pad + 2,
-                 State.W + pad * 2, State.H + pad * 2,
-                 Color3.new(0, 0, 0), 5,
-                 Layout.Corner + i,
-                 0.018 / i)
-        end
-    end
-
-    -- Main frosted-glass tint. Low opacity lets the Roblox scene remain
-    -- visible through the window instead of producing an opaque panel.
+    -- The entire UI is one glass pane. There are deliberately no inset
+    -- rectangles, shadow frames, or secondary square shells near its edge.
     Rect(State.X, State.Y, State.W, State.H,
-         th.Base, 10, Layout.Corner, 0.48)
+         th.Base, 10, Layout.Corner, 0.58)
 
-    -- Very subtle inner glass layers. These are intentionally borderless;
-    -- they tint the rail/content without creating the old "two frames" look.
-    local topH = math.max(0, Layout.TopbarH - 1)
-    Rect(State.X + 1, State.Y + 1, State.W - 2, topH,
-         th.Panel, 11, 0, 0.30)
-
-    local innerY = State.Y + Layout.TopbarH
-    local innerH = math.max(0, State.H - Layout.TopbarH - 1)
-
-    Rect(State.X + 1, innerY,
-         math.max(0, Geometry.RailW - 2), innerH,
-         th.Panel, 12, 0, 0.20)
-
-    Rect(Geometry.ContentX, innerY,
-         math.max(0, State.W - Geometry.RailW - 1), innerH,
-         th.Base, 13, 0, 0.10)
-
-    -- Topbar divider and rail divider are deliberately faint.
+    -- The pane itself provides the complete glass surface. No inset panel,
+    -- topbar rectangle, rail rectangle, or secondary square is drawn.
+    -- Only separators are used for the internal structure.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.32)
+         th.Divider, 14, 1, 0.24)
 
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
-         th.Divider, 14, 1, 0.26)
+         th.Divider, 14, 1, 0.20)
 
-    -- The animated glass edge is drawn last so the light stays visible over
-    -- every translucent layer while still remaining underneath the UI content.
+    -- Draw the single outer glass edge last so it remains clean and continuous.
     DrawGlassBorder(th)
 end
 
