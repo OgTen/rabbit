@@ -1438,18 +1438,18 @@ local function DrawFrame()
     -- The entire UI is one glass pane. There are deliberately no inset
     -- rectangles, shadow frames, or secondary square shells near its edge.
     Rect(State.X, State.Y, State.W, State.H,
-         th.Base, 10, Layout.Corner, 0.58)
+         th.Base, 10, Layout.Corner, 0.80)
 
     -- The pane itself provides the complete glass surface. No inset panel,
     -- topbar rectangle, rail rectangle, or secondary square is drawn.
     -- Only separators are used for the internal structure.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.24)
+         th.Divider, 14, 1, 0.34)
 
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
-         th.Divider, 14, 1, 0.20)
+         th.Divider, 14, 1, 0.28)
 
     -- Draw the single outer glass edge last so it remains clean and continuous.
     DrawGlassBorder(th)
@@ -4213,6 +4213,14 @@ end
 local LastHotkeyState = false
 
 local function Render()
+    -- The window starts fully visible. Open/close fading only changes this
+    -- value after an actual visibility toggle; it must never inherit a stale
+    -- fade state from a previous render.
+    if State.Frame == 0 and State.Open then
+        State.Visible = 1
+        FrameAlpha = 1
+    end
+
     -- read inputs
     ReadInput()
     ReadKeys()
