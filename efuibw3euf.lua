@@ -306,7 +306,7 @@ end
 
 -- Dark translucent surface used for detached panels that should feel like
 -- frosted glass instead of a separate solid block.
-local FrostedSurfaceAlpha = 0.48
+local FrostedSurfaceAlpha = 0.68
 
 local function FrostedSurface(x, y, w, h, color, z, corner)
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
@@ -1791,9 +1791,9 @@ local function DrawTabRail()
     -- of using a fully opaque block. The faint outline keeps the detached
     -- section readable without competing with the pill tabs.
     FrostedSurface(sectionX, sectionY, sectionW, sectionH,
-                   rgb(14, 18, 27), 36, 12)
+                   rgb(12, 16, 25), 36, 12)
     Stroke(sectionX, sectionY, sectionW, sectionH,
-           th.Stroke, 37, 12, 0.28)
+           th.Stroke, 37, 12, 0.42)
 
     local rowY = sectionY + 11
     local padX = 8
