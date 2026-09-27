@@ -1314,44 +1314,50 @@ end
 
 local function GetRequiredWindowHeight()
     local count = GetVisibleTabCount()
+
+    -- Keep the normal default window size for small tab counts.
+    -- Only grow the window when the complete collapsed sidebar stack would
+    -- otherwise extend beyond the detached sidebar section.
+    local defaultHeight = Layout.WindowH
+
     if count <= 0 then
-        return Layout.WindowMinH
+        return math.max(Layout.WindowMinH, defaultHeight)
     end
 
-    -- Match DrawTabRail() exactly. Tabs are positioned from rowY using the
-    -- base TabRowH plus TabGap; the collapsed scale changes each tab's drawn
-    -- height and its centering offset, but does not change the row-to-row step.
+    -- DrawTabRail() starts collapsed, so use the largest tab height here.
+    -- Its actual row step is:
+    --     tabRowH + TabGap
+    -- where tabRowH = TabRowH * collapsedScale.
     local sectionTopPad = 5
     local tabTopPad = 11
     local tabBottomPad = 10
+    local sectionBottomPad = 5
+
     local collapsedScale = 1.18
+    local tabH = Layout.TabRowH * collapsedScale
+    local gap = Layout.TabGap
 
-    local rowH = Layout.TabRowH
-    local tabGap = Layout.TabGap
-    local lastRowOffset = (rowH - (rowH * collapsedScale)) * 0.5
-    local lastTabH = rowH * collapsedScale
+    local tabsHeight =
+        (count * tabH)
+        + (math.max(0, count - 1) * gap)
 
-    -- sectionY = railY + sectionTopPad
-    -- rowY     = sectionY + tabTopPad
-    -- last tab uses (count - 1) row steps.
-    local lastTabBottomFromRailY =
+    -- RailY starts directly below the topbar. The detached section is
+    -- inset by 5px at both vertical edges.
+    local railHeight =
         sectionTopPad
         + tabTopPad
-        + ((count - 1) * (rowH + tabGap))
-        + lastRowOffset
-        + lastTabH
-
-    -- DrawTabRail's section bottom is railY + railH - 5.
-    -- Keep tabBottomPad between the last tab and that section bottom.
-    local railBottomPadding = 5
-    local railHeight =
-        lastTabBottomFromRailY
+        + tabsHeight
         + tabBottomPad
-        + railBottomPadding
+        + sectionBottomPad
 
-    local required = Layout.TopbarH + Geometry.FooterH + railHeight
+    local required =
+        Layout.TopbarH
+        + Geometry.FooterH
+        + railHeight
 
-    return math.max(Layout.WindowMinH, math.ceil(required))
+    -- Never make a normal 3-tab window smaller than the standard 500px
+    -- window. Larger tab counts grow downward from that baseline.
+    return math.max(Layout.WindowMinH, defaultHeight, math.ceil(required))
 end
 
 local function EnsureWindowFitsTabs()
