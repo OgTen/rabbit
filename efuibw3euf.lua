@@ -1098,6 +1098,17 @@ local State = {
     Delta       = 1 / 60,
     LastTick    = os.clock(),
 
+    -- startup animation
+    Startup = {
+        Active = false,
+        Phase = "idle",
+        Time = 0,
+        Duration = 2.0,
+        Progress = 0,
+        StartX = 0, StartY = 0, StartW = 0, StartH = 0,
+        TargetX = 0, TargetY = 0, TargetW = 0, TargetH = 0,
+    },
+
     -- global animation toggle
     NoAnim      = false,
 
@@ -1616,6 +1627,118 @@ local function DrawFrame()
 
     -- Single animated glass edge.
     DrawGlassBorder(th)
+end
+
+-- ============================================================================
+--  STARTUP ANIMATION  --  the existing window becomes the startup frame
+-- ============================================================================
+
+local function StartupEase(t)
+    if t < 0.5 then
+        return 4 * t * t * t
+    end
+    local f = -2 * t + 2
+    return 1 - (f * f * f) / 2
+end
+
+local function DrawStartupFrame()
+    local th = State.Theme
+    local x, y, w, h = State.X, State.Y, State.W, State.H
+    local accent = th.Accent
+    local textColor = th.Text
+    local muted = th.SubText
+
+    -- This is the SAME glass pane used by the normal interface.
+    GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
+    DrawGlassBorder(th)
+
+    local cx = x + w / 2
+    local contentW = math.min(300, math.max(180, w - 44))
+    local barH = 4
+    local barX = cx - contentW / 2
+    local barY = y + h - 30
+    local progress = State.Startup.Progress
+
+    local markSize = math.min(30, math.max(22, h * 0.22))
+    local titleSize = math.min(18, math.max(14, h * 0.115))
+    local titleGap = 10
+    local totalW = markSize + titleGap + TextWidth("SHADOW UI", titleSize, 2)
+    local markX = cx - totalW / 2
+    local markY = y + h * 0.27
+
+    Rect(markX, markY, markSize, markSize, accent, 30, 5, 0.18)
+    Stroke(markX, markY, markSize, markSize, accent, 31, 5, 0.55)
+    TextCenter("S", markX + markSize / 2, markY + 5, accent, titleSize + 1, 2, 32, 1)
+    Text("SHADOW UI", markX + markSize + titleGap, markY + 4, textColor, titleSize, 2, 32, 1, nil, false)
+    TextCenter("Initializing interface...", cx, markY + markSize + 9, muted, 11, 2, 32, 1)
+
+    Rect(barX, barY, contentW, barH, th.Divider, 30, 2, 0.42)
+    if progress > 0 then
+        Rect(barX, barY, math.max(1, contentW * progress), barH, accent, 31, 2, 0.95)
+    end
+    TextCenter(tostring(math.floor(progress * 100)) .. "%", cx, barY + 8, muted, 10, 2, 32, 1)
+end
+
+local function TickStartup(dt)
+    local st = State.Startup
+    if not st.Active then return end
+    st.Time = st.Time + dt
+
+    if st.Phase == "loading" then
+        local t = math.min(st.Time / st.Duration, 1)
+        st.Progress = 1 - (1 - t) * (1 - t)
+        if t >= 1 then
+            st.Phase = "pop"
+            st.Time = 0
+            st.Progress = 1
+        end
+        return
+    end
+
+    if st.Phase == "pop" then
+        local t = math.min(st.Time / 0.48, 1)
+        local eased = StartupEase(t)
+        local overshoot = math.sin(t * math.pi) * 0.018
+        local scale = 0.84 + 0.16 * eased + overshoot
+
+        State.W = st.StartW + (st.TargetW - st.StartW) * scale
+        State.H = st.StartH + (st.TargetH - st.StartH) * scale
+        State.X = st.TargetX + (st.TargetW - State.W) / 2
+        State.Y = st.TargetY + (st.TargetH - State.H) / 2
+
+        if t >= 1 then
+            State.X, State.Y = st.TargetX, st.TargetY
+            State.W, State.H = st.TargetW, st.TargetH
+            st.Active = false
+            st.Phase = "done"
+        end
+    end
+end
+
+local function StartStartup(opts)
+    opts = opts or {}
+    local st = State.Startup
+    local vp = Camera.ViewportSize
+
+    st.Duration = math.max(0.5, opts.Duration or 2.0)
+    st.Time = 0
+    st.Progress = 0
+    st.Phase = "loading"
+    st.Active = true
+
+    st.TargetW, st.TargetH = State.W, State.H
+    st.TargetX, st.TargetY = State.X, State.Y
+
+    st.StartW = math.min(390, math.max(340, st.TargetW * 0.56))
+    st.StartH = math.min(150, math.max(140, st.TargetH * 0.30))
+    st.StartX = math.floor((vp.X - st.StartW) / 2)
+    st.StartY = math.floor((vp.Y - st.StartH) / 2)
+
+    State.W, State.H = st.StartW, st.StartH
+    State.X, State.Y = st.StartX, st.StartY
+    State.Visible = 1
+    State.Open = true
+    State.RailOpen = 0
 end
 
 -- ============================================================================
@@ -4254,9 +4377,20 @@ local function Render()
 
 
     -- lifecycle
-    EnsureWindowFitsTabs()
+    if not State.Startup.Active then
+        EnsureWindowFitsTabs()
+    end
     TickVisibility(State.Delta)
     TickTheme(State.Delta)
+    TickStartup(State.Delta)
+
+    if State.Startup.Active then
+        Geometry.Recalculate()
+        ResetPool()
+        DrawStartupFrame()
+        HideUnused()
+        return
+    end
 
     if State.Visible < 0.005 then
         -- window hidden: skip everything
@@ -4406,6 +4540,7 @@ end
 function ShadowUI:Toggle()   ToggleUI() end
 function ShadowUI:Show()     State.Open = true end
 function ShadowUI:Hide()     State.Open = false end
+function ShadowUI:StartStartup(opts) StartStartup(opts) end
 
 function ShadowUI:IsAlive() return State.Alive end
 
