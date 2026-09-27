@@ -1072,8 +1072,8 @@ local State = {
     X = 100, Y = 100,
     W = Layout.WindowW,
     H = Layout.WindowH,
-    Visible = 1,          -- 0..1 animation
-    Open = true,
+    Visible = 0,          -- 0..1 animation
+    Open = false,
 
     -- drag / resize
     Drag        = nil,    -- { GrabX, GrabY }
@@ -1718,34 +1718,25 @@ local function DrawStartupBranding()
         local data = st.LogoData
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
+            -- Assign Data directly. The older build was able to render the
+            -- image with this ordering; only its layer/alpha were wrong.
+            obj.Data = data
             obj.Position = Vector2.new(groupX, logoY)
             obj.Size = Vector2.new(logoSize, logoSize)
             obj.Rounding = 5
-            -- Layer() maps logical z values into very large ZIndex values.
-            -- A raw ZIndex such as 32/60 would put the image underneath the
-            -- startup glass and make it look dark or completely hidden.
+            -- Normal UI layers are produced by Layer(z), which expands them
+            -- into the millions. Keep the startup image above that glass pane.
             obj.ZIndex = 6000000
-            obj.Transparency = 0
-            obj.Visible = true
-            -- Matcha can create the Image object successfully but fail to
-            -- display data when Data is assigned during object construction.
-            -- Assign the already-downloaded bytes after the object is live.
-            task.defer(function()
-                if not State.Alive or State.Startup.LogoImage ~= obj then
-                    return
-                end
-                pcall(function()
-                    obj.Data = data
-                end)
-            end)
+            obj.Transparency = 1 - fade
+            obj.Visible = fade > 0.001
             return obj
         end)
         if ok and image then
             st.LogoImage = image
-            st.LogoData = nil
         else
             st.LogoFailed = true
         end
+        st.LogoData = nil
     end
 
     if st.LogoImage then
@@ -1754,7 +1745,6 @@ local function DrawStartupBranding()
         st.LogoImage.ZIndex = 6000000
         st.LogoImage.Transparency = 1 - fade
         st.LogoImage.Visible = fade > 0.001
-    
     else
         Rect(groupX, logoY, logoSize, logoSize, accent, 30, 5, 0.18 * fade)
         Stroke(groupX, logoY, logoSize, logoSize, accent, 31, 5, 0.55 * fade)
@@ -4542,7 +4532,7 @@ local function Render()
     -- The window starts fully visible. Open/close fading only changes this
     -- value after an actual visibility toggle; it must never inherit a stale
     -- fade state from a previous render.
-    if State.Frame == 0 and State.Open then
+    if State.Frame == 0 and State.Open and not State.Startup.Active then
         State.Visible = 1
         FrameAlpha = 1
     end
