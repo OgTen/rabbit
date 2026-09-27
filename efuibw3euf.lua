@@ -1105,6 +1105,8 @@ local State = {
         Time = 0,
         Duration = 2.0,
         Progress = 0,
+        RevealProgress = 0,
+        RevealDuration = 0.85,
         StartX = 0, StartY = 0, StartW = 0, StartH = 0,
         TargetX = 0, TargetY = 0, TargetW = 0, TargetH = 0,
     },
@@ -1714,6 +1716,19 @@ local function TickStartup(dt)
         if t >= 1 then
             State.X, State.Y = st.TargetX, st.TargetY
             State.W, State.H = st.TargetW, st.TargetH
+            st.Phase = "reveal"
+            st.Time = 0
+            st.RevealProgress = 0
+        end
+        return
+    end
+
+    if st.Phase == "reveal" then
+        st.Time = st.Time + 0
+        local t = math.min(st.Time / st.RevealDuration, 1)
+        st.RevealProgress = t * t * (3 - 2 * t)
+        if t >= 1 then
+            st.RevealProgress = 1
             st.Active = false
             st.Phase = "done"
         end
@@ -1728,6 +1743,7 @@ local function StartStartup(opts)
     st.Duration = math.max(0.5, opts.Duration or 2.0)
     st.Time = 0
     st.Progress = 0
+    st.RevealProgress = 0
     st.Phase = "loading"
     st.Active = true
 
@@ -1897,6 +1913,14 @@ local function TickRailOpen(dt)
     end
 end
 
+local function StartupRevealCount(total, progress)
+    if not State.Startup.Active or State.Startup.Phase ~= "reveal" then
+        return total
+    end
+    if total <= 0 then return 0 end
+    return math.min(total, math.max(0, math.ceil(total * progress)))
+end
+
 local function DrawTabRail()
     local th = State.Theme
     local openAmt = State.RailOpen
@@ -1939,8 +1963,10 @@ local function DrawTabRail()
     local rowH = Layout.TabRowH
     local tabGap = Layout.TabGap
     local iconSize = Layout.TabIcon
+    local visibleTabs = StartupRevealCount(#State.Tabs, State.Startup.RevealProgress)
 
     for i, tab in ipairs(State.Tabs) do
+        if i > visibleTabs then break end
         if not tab.Hidden then
             -- Pill tabs: expanded tabs fill the usable section width, while
             -- collapsed tabs become compact centered capsules instead of large
@@ -3619,9 +3645,33 @@ end)
 --  CONTENT RENDER  --  draws the active tab's rows inside the content area
 -- ============================================================================
 
+local function GetContentRevealUnits(tab)
+    if not tab then return 0 end
+    local units = 0
+    local i = 1
+    while i <= #(tab.Rows or {}) do
+        local row = tab.Rows[i]
+        if not row.Hidden then
+            if IsSection(row) and tab.Rows[i + 1] and not tab.Rows[i + 1].Hidden and IsSection(tab.Rows[i + 1]) then
+                units = units + 1
+                i = i + 2
+            else
+                units = units + 1
+                i = i + 1
+            end
+        else
+            i = i + 1
+        end
+    end
+    return units
+end
+
 local function DrawContent()
     local tab = State.Tabs[State.ActiveIndex]
     if not tab then return end
+
+    local revealUnits = StartupRevealCount(GetContentRevealUnits(tab), State.Startup.RevealProgress)
+    local revealIndex = 0
 
     local titleY = Geometry.ContentY + 6
     local title = tab.Name
@@ -3707,6 +3757,8 @@ local function DrawContent()
         if not row.Hidden then
             if IsSection(row) then
                 local nextRow = tab.Rows[i + 1]
+                revealIndex = revealIndex + 1
+                local revealThis = revealIndex <= revealUnits
                 local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
                 local x1 = Geometry.InnerX
                 local x2 = Geometry.InnerX + halfW + Layout.SectionColumnGap
@@ -3717,7 +3769,7 @@ local function DrawContent()
                     local pairH = math.max(h1, h2)
                     local clipTop = viewportTop
                     local clipBottom = Geometry.ContentY + Geometry.ContentH
-                    if not State.Startup.Active or (cy >= clipTop and cy + pairH <= clipBottom) then
+                    if revealThis and (not State.Startup.Active or (cy >= clipTop and cy + pairH <= clipBottom)) then
                         DrawSection(row, x1, cy, halfW)
                         DrawSection(nextRow, x2, cy, halfW)
                     end
@@ -3727,7 +3779,7 @@ local function DrawContent()
                     local sectionH = MeasureSection(row, halfW)
                     local clipTop = viewportTop
                     local clipBottom = Geometry.ContentY + Geometry.ContentH
-                    if not State.Startup.Active or (cy >= clipTop and cy + sectionH <= clipBottom) then
+                    if revealThis and (not State.Startup.Active or (cy >= clipTop and cy + sectionH <= clipBottom)) then
                         DrawSection(row, x1, cy, halfW)
                     end
                     cy = cy + sectionH + Layout.SectionGap
@@ -3735,9 +3787,11 @@ local function DrawContent()
                 end
             else
                 local h = row.Height or Layout.RowHeight
+                revealIndex = revealIndex + 1
+                local revealThis = revealIndex <= revealUnits
                 local clipTop = viewportTop
                 local clipBottom = Geometry.ContentY + Geometry.ContentH
-                if not State.Startup.Active or (cy >= clipTop and cy + h <= clipBottom) then
+                if revealThis and (not State.Startup.Active or (cy >= clipTop and cy + h <= clipBottom)) then
                     h = DrawRow(row, Geometry.InnerX, cy, Geometry.InnerW) or h
                 end
                 cy = cy + h + Layout.RowGapY
@@ -4413,12 +4467,23 @@ local function Render()
     TickStartup(State.Delta)
 
     local startupIsLoading = State.Startup.Active and State.Startup.Phase == "loading"
-    local startupWasPop = State.Startup.Active and State.Startup.Phase == "pop"
+    local startupIsPop = State.Startup.Active and State.Startup.Phase == "pop"
+    local startupIsReveal = State.Startup.Active and State.Startup.Phase == "reveal"
 
     if startupIsLoading then
         Geometry.Recalculate()
         ResetPool()
         DrawStartupFrame()
+        HideUnused()
+        return
+    end
+
+    if startupIsPop then
+        Geometry.Recalculate()
+        ResetPool()
+        -- Only the actual window shell is drawn while it expands. No sidebar
+        -- or tab contents are rendered until the window reaches full size.
+        DrawFrame()
         HideUnused()
         return
     end
@@ -4456,17 +4521,13 @@ local function Render()
     DrawTabRail()
     DrawContent()
 
-    -- input for the interactive regions
-    InputContent()
+    -- Do not interact with partially revealed controls. They become live once
+    -- the reveal reaches the final frame.
+    if not startupIsReveal then
+        InputContent()
+    end
 
     -- drag from title bar handled in DrawTitleBar already
-
-    -- During the opening expansion, the real interface is rendered immediately
-    -- underneath the fading startup content. This keeps the transition as one
-    -- continuous window instead of waiting for the resize to finish.
-    if startupWasPop then
-        DrawStartupFrame()
-    end
 
     -- notifications & tooltips sit above everything
     TickNotifications(State.Delta)
