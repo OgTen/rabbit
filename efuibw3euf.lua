@@ -1692,11 +1692,15 @@ end
 
 local function DrawStartupBranding()
     local th = State.Theme
-    local x, y, w, h = State.X, State.Y, State.W, State.H
+    local st = State.Startup
+    local x, y, w, h
+    if st.Phase == "loading" then
+        x, y, w, h = st.StartX, st.StartY, st.StartW, st.StartH
+    else
+        x, y, w, h = State.X, State.Y, State.W, State.H
+    end
     local accent = th.Accent
     local textColor = th.Text
-    local st = State.Startup
-
     EnsureStartupLogo(st.LogoURL)
 
     -- Fixed compact startup geometry. The logo never participates in sizing
@@ -1733,12 +1737,12 @@ local function DrawStartupBranding()
         local raw = st.LogoData
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
-            obj.Visible = true
+            obj.Data = raw
             obj.ZIndex = 34
             obj.Position = Vector2.new(groupX, logoY)
             obj.Size = Vector2.new(logoSize, logoSize)
             obj.Transparency = 0
-            obj.Data = raw
+            obj.Visible = true
             return obj
         end)
         if ok and image then
@@ -1779,9 +1783,15 @@ end
 
 local function DrawStartupFrame()
     local th = State.Theme
-    local x, y, w, h = State.X, State.Y, State.W, State.H
+    local st = State.Startup
+    local x, y, w, h = st.StartX, st.StartY, st.StartW, st.StartH
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
+    -- During the loading phase, use the fixed startup geometry for the border
+    -- as well. This prevents any target/window height from affecting the frame.
+    local oldX, oldY, oldW, oldH = State.X, State.Y, State.W, State.H
+    State.X, State.Y, State.W, State.H = x, y, w, h
     DrawGlassBorder(th)
+    State.X, State.Y, State.W, State.H = oldX, oldY, oldW, oldH
     DrawStartupBranding()
 end
 
