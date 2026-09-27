@@ -610,6 +610,15 @@ end
 local function MouseIn(x, y, w, h)
     local mx = tonumber(Input.X) or 0
     local my = tonumber(Input.Y) or 0
+
+    -- Geometry values can briefly be nil during executor startup or a
+    -- resize/reload transition. Normalize every hit-test argument so a
+    -- transient nil can never abort the render loop.
+    x = tonumber(x) or 0
+    y = tonumber(y) or 0
+    w = tonumber(w) or 0
+    h = tonumber(h) or 0
+
     return mx >= x and mx <= x + w
        and my >= y and my <= y + h
 end
