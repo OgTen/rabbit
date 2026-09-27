@@ -1630,7 +1630,7 @@ local function TickRailOpen(dt)
     -- The entire detached sidebar section is the hover trigger.
     -- This means the rail opens when the cursor is anywhere over the
     -- sidebar surface, not just when it is directly over a tab.
-    local sectionPadX = 4
+    local sectionPadX = 8
     local sectionPadY = 5
     local sectionX = Geometry.RailX + sectionPadX
     local sectionY = Geometry.RailY + sectionPadY
@@ -1661,7 +1661,7 @@ local function DrawTabRail()
     -- Detached navigation container: no full-height sidebar fill.
     -- Keep a clear gap from the main window edge so the navigation reads as
     -- its own floating section. It is slightly larger than the previous build.
-    local sectionPadX = 4
+    local sectionPadX = 8
 
     -- New sidebar motion: the detached navigation layer slides into place
     -- while it expands. The rail geometry itself stays unchanged so hover,
