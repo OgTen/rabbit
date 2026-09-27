@@ -3768,6 +3768,207 @@ local function NextTheme()
 end
 
 -- ============================================================================
+--  NOTIFICATIONS  --  stacked toast queue, slide-in from right
+-- ============================================================================
+
+local Notification = {}
+Notification.__index = Notification
+
+local NoteColors = {
+    info    = { accent = "Accent",   icon = "info"    },
+    success = { accent = "Success",  icon = "success" },
+    warning = { accent = "Warning",  icon = "warning" },
+    error   = { accent = "Danger",   icon = "error"   },
+}
+
+local function Notify(opts)
+    opts = opts or {}
+    local entry = setmetatable({
+        Title    = opts.Title   or "Notice",
+        Content  = opts.Content or "",
+        Type     = opts.Type    or "info",
+        Duration = opts.Duration or 4,
+
+        -- animation
+        Fade     = 0,
+        Slide    = 0,
+        Life     = 0,
+        TargetLife = opts.Duration or 4,
+        Done     = false,
+    }, Notification)
+
+    State.Notifications[#State.Notifications + 1] = entry
+    return entry
+end
+
+local function TickNotifications(dt)
+    local list = State.Notifications
+    local i = 1
+
+    while i <= #list do
+        local n = list[i]
+        n.Life = n.Life + dt
+
+        -- fade in fast, fade out over last 0.4s
+        local remaining = n.TargetLife - n.Life
+        local targetFade, targetSlide
+
+        if n.Life < 0.25 then
+            targetFade = n.Life / 0.25
+            targetSlide = (1 - n.Life / 0.25) * 40
+        elseif remaining < 0.4 then
+            targetFade = math.max(0, remaining / 0.4)
+            targetSlide = (1 - math.max(0, remaining / 0.4)) * 40
+        else
+            targetFade = 1
+            targetSlide = 0
+        end
+
+        n.Fade  = Approach(n.Fade,  targetFade,  18, dt)
+        n.Slide = Approach(n.Slide, targetSlide, 18, dt)
+
+        if n.Life >= n.TargetLife and n.Fade < 0.02 then
+            n.Done = true
+        end
+
+        if n.Done then
+            table.remove(list, i)
+        else
+            i = i + 1
+        end
+    end
+end
+
+local function DrawNotifications()
+    local th = State.Theme
+    local vp = Camera.ViewportSize
+    local notW = 280
+    local notH = 56
+    local gap = 8
+    local baseY = vp.Y - 60
+    local baseX = vp.X - notW - 16
+
+    for i = #State.Notifications, 1, -1 do
+        local n = State.Notifications[i]
+        local a = n.Fade
+        if a > 0.005 then
+            local ny = baseY - (i - 1) * (notH + gap)
+            local nx = baseX + n.Slide
+
+            local colors = NoteColors[n.Type] or NoteColors.info
+            local accent = th[colors.accent] or th.Accent
+
+            -- shadow
+            Rect(nx + 2, ny + 3, notW, notH, Color3.new(0, 0, 0), 200, 10, 0.3 * a)
+
+            -- body
+            Rect(nx, ny, notW, notH, th.Panel, 201, 10, 0.98 * a)
+            Stroke(nx, ny, notW, notH, accent, 202, 10, 0.65 * a)
+
+            -- accent stripe (left)
+            Rect(nx, ny + 6, 3, notH - 12, accent, 203, 1.5, a * 0.95)
+
+            -- icon
+            DrawIconByName(colors.icon, nx + 12, ny + notH / 2 - 8, 16,
+                           accent, 204, a * 0.9)
+
+            -- title
+            Text(n.Title, nx + 38, ny + 10,
+                 th.Text, 13, FontBold, 205, a * 0.98, notW - 48)
+
+            -- content (word-wrapped to 2 lines if needed)
+            if n.Content ~= "" then
+                Text(n.Content, nx + 38, ny + 28,
+                     th.TextDim, 11, FontSystem, 205, a * 0.8, notW - 48)
+            end
+
+            -- progress bar at bottom of card
+            local remain = 1 - (n.Life / n.TargetLife)
+            if remain > 0 and remain < 1 then
+                local barY = ny + notH - 3
+                local barW = (notW - 20) * remain
+                Rect(nx + 10, barY, barW, 1.5, accent, 206, 0.75, a * 0.75)
+            end
+        end
+    end
+end
+
+-- ============================================================================
+--  TOOLTIPS  --  hover info panel, topmost layer
+-- ============================================================================
+
+local Tooltip = {
+    Current = nil,     -- text
+    X = 0, Y = 0,
+    Fade = 0,
+    LastSetAt = 0,
+    Delay = 0.35,
+}
+
+local function WantTooltip(text)
+    if not text or text == "" then return end
+    if Tooltip.Current ~= text then
+        Tooltip.Current = text
+        Tooltip.LastSetAt = os.clock()
+    end
+    Tooltip.X = Input.X
+    Tooltip.Y = Input.Y
+end
+
+local function TickTooltip(dt)
+    local target = 0
+    if Tooltip.Current and (os.clock() - Tooltip.LastSetAt) >= Tooltip.Delay then
+        target = 1
+    end
+
+    Tooltip.Fade = Approach(Tooltip.Fade, target, 18, dt)
+
+    if not Tooltip.Current then
+        Tooltip.Fade = 0
+    end
+end
+
+local function DrawTooltip()
+    if Tooltip.Fade < 0.02 or not Tooltip.Current then return end
+
+    local th = State.Theme
+    local a = Tooltip.Fade
+
+    local text = Tooltip.Current
+    local textW = TextWidth(text, 12, FontSystem)
+    local padX = 10
+    local padY = 6
+    local boxW = textW + padX * 2
+    local boxH = 12 + padY * 2 + 4
+
+    local vp = Camera.ViewportSize
+    local tx = Tooltip.X + 14
+    local ty = Tooltip.Y + 18
+
+    -- flip sides if near right/bottom edges
+    if tx + boxW > vp.X - 8 then
+        tx = Tooltip.X - boxW - 8
+    end
+    if ty + boxH > vp.Y - 8 then
+        ty = Tooltip.Y - boxH - 8
+    end
+
+    -- shadow + body
+    Rect(tx + 2, ty + 3, boxW, boxH, Color3.new(0, 0, 0), 300, 6, 0.28 * a)
+    Rect(tx, ty, boxW, boxH, th.Base, 301, 6, 0.98 * a)
+    Stroke(tx, ty, boxW, boxH, th.Stroke, 302, 6, 0.6 * a)
+
+    Text(text, tx + padX, ty + padY + 1,
+         th.Text, 12, FontSystem, 303, a)
+end
+
+local function ClearTooltip()
+    Tooltip.Current = nil
+    Tooltip.Fade = 0
+end
+
+
+-- ============================================================================
 --  OPEN / CLOSE  --  visibility animation
 -- ============================================================================
 
