@@ -128,8 +128,8 @@ local Layout = {
     Corner          = 12,
     TopbarH         = 44,
     TabRailW        = 172,
-    TabRailMinW     = 52,
-    TabRailNarrow   = 52,
+    TabRailMinW     = 76,
+    TabRailNarrow   = 76,
 
     -- tab / section
     TabRowH         = 34,
@@ -1703,28 +1703,22 @@ local function DrawTabRail()
 
     for i, tab in ipairs(State.Tabs) do
         if not tab.Hidden then
-            -- Give collapsed tabs a little more usable width while keeping
-            -- their right edge exactly inside the detached sidebar section.
-            local collapsedPadX = 7
+            -- The collapsed sidebar is wider now, so the tabs can be slightly
+            -- larger without looking stretched or escaping the rounded section.
+            local collapsedPadX = 8
             local x = sectionX + collapsedPadX
             local y = rowY
 
-            -- The tab itself grows continuously with the sidebar animation.
-            -- This keeps the navigation feeling like one connected motion
-            -- instead of making the cards snap between collapsed/expanded sizes.
-            -- Size the tab from the actual detached section width so the
-            -- tab always stays fully inside the rounded sidebar container.
-            -- The section is slightly wider than before, while the tab keeps
-            -- the same inner padding on both sides.
-            -- Give collapsed tabs a little more horizontal room while keeping
-            -- the expanded tabs fully inside the detached sidebar section.
-            local sectionTabRightPad = 14
-            local sectionTabW = math.max(1, sectionW - padX - sectionTabRightPad)
+            -- Keep a matching right inset so the tab always remains fully
+            -- inside the detached sidebar section.
+            local sectionTabRightPad = 8
+            local sectionTabW = math.max(1, sectionW - collapsedPadX - sectionTabRightPad)
 
-            -- Collapsed tabs are 30% larger overall, not just wider.
-            -- The scale eases back to the normal dimensions as the sidebar opens.
-            local collapsedScale = 1.30 - (0.30 * openAmt)
-            local narrowTabW = math.max(1, sectionTabW * collapsedScale)
+            -- A modest size increase in the collapsed state. The sidebar
+            -- itself provides most of the extra visual presence, rather than
+            -- stretching the tab independently.
+            local collapsedScale = 1.12 - (0.12 * openAmt)
+            local narrowTabW = math.max(1, sectionTabW)
             local wideTabW = sectionTabW
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
