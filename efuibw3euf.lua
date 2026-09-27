@@ -1662,6 +1662,9 @@ local function EnsureStartupLogo(url)
 
     task.spawn(function()
         local ok, data = pcall(function()
+            if type(httpget) == "function" then
+                return httpget(url)
+            end
             return game:HttpGet(url)
         end)
 
@@ -1691,43 +1694,40 @@ local function DrawStartupFrame()
     local x, y, w, h = State.X, State.Y, State.W, State.H
     local accent = th.Accent
     local textColor = th.Text
+    local st = State.Startup
 
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
     DrawGlassBorder(th)
 
-    local st = State.Startup
-    local progress = st.Progress
-    local cx = x + w / 2
-
-    -- The showcase/API can provide any direct image URL. Matcha's Image drawing
-    -- object accepts the raw bytes returned by game:HttpGet.
     EnsureStartupLogo(st.LogoURL)
 
-    local logoSize = math.min(76, math.max(62, h * 0.54))
-    local logoX = cx - logoSize / 2 - 48
-    local logoY = y + math.max(8, (h - logoSize) / 2 - 7)
-
-    local logoVisible = 1
-    local titleVisible = 1
+    local fade = 1
     if st.Phase == "pop" then
-        local fadeT = math.min(st.Time / 0.18, 1)
-        logoVisible = 1 - fadeT
-        titleVisible = 1 - fadeT
+        fade = 1 - math.min(st.Time / 0.14, 1)
     end
 
+    local logoSize = math.min(68, math.max(58, h * 0.56))
+    local titleSize = math.min(18, math.max(14, h * 0.15))
+    local title = "SHADOW UI"
+    local titleW = TextWidth(title, titleSize, FontBold)
+    local gap = 9
+    local groupW = logoSize + gap + titleW
+    local groupX = x + (w - groupW) / 2
+    local logoY = y + math.max(7, (h - logoSize) / 2 - 7)
+
+    -- Custom image is optional. If it has not loaded yet, use the normal S mark.
     if st.LogoData and not st.LogoImage then
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
             obj.Data = st.LogoData
+            obj.Position = Vector2.new(groupX, logoY)
             obj.Size = Vector2.new(logoSize, logoSize)
-            obj.Position = Vector2.new(logoX, logoY)
-            obj.Transparency = 1
+            obj.Transparency = fade
             obj.Visible = true
             obj.ZIndex = 32
-            pcall(function() obj.Rounding = 10 end)
             return obj
         end)
-        if ok then
+        if ok and image then
             st.LogoImage = image
         else
             st.LogoFailed = true
@@ -1736,38 +1736,34 @@ local function DrawStartupFrame()
     end
 
     if st.LogoImage then
+        st.LogoImage.Position = Vector2.new(groupX, logoY)
         st.LogoImage.Size = Vector2.new(logoSize, logoSize)
-        st.LogoImage.Position = Vector2.new(logoX, logoY)
-        st.LogoImage.Transparency = logoVisible
-        st.LogoImage.Visible = true
+        st.LogoImage.Transparency = fade
+        st.LogoImage.Visible = fade > 0.001
     else
-        local fallback = math.min(54, logoSize - 8)
-        local fx = cx - fallback / 2 - 48
-        local fy = y + (h - fallback) / 2 - 5
-        Rect(fx, fy, fallback, fallback, accent, 30, 5, 0.18 * logoVisible)
-        Stroke(fx, fy, fallback, fallback, accent, 31, 5, 0.55 * logoVisible)
-        TextCenter("S", fx + fallback / 2, fy + 9, accent, 22, FontBold, 32, logoVisible)
+        Rect(groupX, logoY, logoSize, logoSize, accent, 30, 5, 0.18 * fade)
+        Stroke(groupX, logoY, logoSize, logoSize, accent, 31, 5, 0.55 * fade)
+        TextCenter("S", groupX + logoSize / 2, logoY + 12, accent, titleSize + 4, FontBold, 32, fade)
     end
 
-    -- The title begins against the logo and slides out to the right as the
-    -- image becomes established.
-    local title = "SHADOW UI"
-    local titleSize = 18
-    local titleW = TextWidth(title, titleSize, FontBold)
-    local titleBaseX = logoX + logoSize + 12
-    local titleSlide = math.min(1, math.max(0, st.Time / 0.55))
-    titleSlide = titleSlide * titleSlide * (3 - 2 * titleSlide)
-    local titleX = titleBaseX + (1 - titleSlide) * 22
-    Text(title, titleX, y + h / 2 - titleSize / 2 + 1, textColor, titleSize, FontBold, 32, titleVisible, titleW + 2)
+    -- The title starts beside the image and slides smoothly outward to the right.
+    local slideT = math.min(st.Time / 0.50, 1)
+    slideT = slideT * slideT * (3 - 2 * slideT)
+    if st.Phase ~= "loading" then
+        slideT = 1
+    end
+    local titleX = groupX + logoSize + gap + (1 - slideT) * 20
+    Text(title, titleX, logoY + (logoSize - titleSize) / 2 + 1,
+         textColor, titleSize, FontBold, 32, fade, titleW + 2, false)
 
-    -- Loading bar remains independent underneath the branding.
-    local barW = math.min(220, math.max(170, w - 56))
+    -- Only the loading bar remains underneath the branding.
+    local barW = math.min(210, math.max(150, w - 46))
     local barH = 4
-    local barX = cx - barW / 2
-    local barY = y + h - 16
+    local barX = x + (w - barW) / 2
+    local barY = y + h - 17
     Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
-    if progress > 0 then
-        Rect(barX, barY, math.max(1, barW * progress), barH, accent, 31, 2, 0.95)
+    if st.Progress > 0 then
+        Rect(barX, barY, math.max(1, barW * st.Progress), barH, accent, 31, 2, 0.95)
     end
 end
 
@@ -1829,18 +1825,18 @@ local function StartStartup(opts)
     st.Progress = 0
     st.RevealProgress = 0
     st.Phase = "loading"
-    st.LogoURL = opts.logo or opts.Logo or st.LogoURL
+    st.LogoURL = opts.logo or opts.Logo or nil
     st.LogoData = nil
-    st.LogoFailed = false
     st.LogoLoading = false
+    st.LogoFailed = false
     ClearStartupLogo()
     st.Active = true
 
     st.TargetW, st.TargetH = State.W, State.H
     st.TargetX, st.TargetY = State.X, State.Y
 
-    st.StartW = math.min(320, math.max(300, st.TargetW * 0.44))
-    st.StartH = math.min(132, math.max(116, st.TargetH * 0.245))
+    st.StartW = math.min(300, math.max(270, st.TargetW * 0.42))
+    st.StartH = math.min(112, math.max(100, st.TargetH * 0.225))
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
@@ -4672,15 +4668,6 @@ ShadowUI.Layout         = Layout
 ShadowUI.State          = State
 ShadowUI.Tabs           = {}
 
--- window --------------------------------------------------------------------
--- Configure and start the single Shadow UI window. `logo` accepts any direct
--- image URL whose bytes can be fetched with game:HttpGet.
-function ShadowUI:CreateWindow(opts)
-    opts = opts or {}
-    self:StartStartup(opts)
-    return self
-end
-
 -- tabs ----------------------------------------------------------------------
 function ShadowUI:AddTab(opts)
     opts = opts or {}
@@ -4745,7 +4732,6 @@ function ShadowUI:Destroy()
     State.Alive = false
     pcall(function() SaveConfig() end)
     ClearPool()
-    ClearStartupLogo()
     ClearFocus()
     CancelCapture()
     _G.ShadowUI = nil
