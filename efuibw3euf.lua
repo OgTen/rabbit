@@ -138,8 +138,8 @@ local Layout = {
     SectionH        = 22,
     SectionGap      = 12,
     SectionColumnGap = 12,
-    SectionPadX     = 12,
-    SectionPadY     = 0,
+    SectionPadX     = 16,
+    SectionPadY     = 12,
     SectionCorner   = 12,
     SectionTitleH   = 18,
     SectionDescH    = 16,
@@ -2483,7 +2483,8 @@ local function MeasureSection(section, w)
     end
 
     local headerH = GetSectionHeaderHeight(section)
-    local panelH = Layout.SectionPadY + 7 + math.max(Layout.RowHeight, contentH)
+    local contentMinH = math.max(Layout.RowHeight, contentH)
+    local panelH = Layout.SectionPadY + contentMinH + Layout.SectionPadY
     return headerH + panelH
 end
 
