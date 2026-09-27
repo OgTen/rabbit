@@ -1318,17 +1318,29 @@ local function GetRequiredWindowHeight()
         return Layout.WindowMinH
     end
 
-    local sectionTop = 5
-    local sectionBottom = 5
-    local firstTabPad = 11
-    local tabRows = count * Layout.TabRowH
-    local tabGaps = math.max(0, count - 1) * Layout.TabGap
+    -- DrawTabRail uses the collapsed tab scale while the sidebar is closed.
+    -- Measure the navigation using that actual rendered height rather than
+    -- the base TabRowH, so the final tab and its bottom spacing remain inside
+    -- the detached sidebar section.
+    local sectionTopPad = 5
+    local sectionBottomPad = 5
+    local tabTopPad = 11
     local tabBottomPad = 11
+    local collapsedScale = 1.18
+    local renderedTabH = Layout.TabRowH * collapsedScale
+    local renderedGaps = math.max(0, count - 1) * Layout.TabGap
 
-    local railHeight = sectionTop + firstTabPad + tabRows + tabGaps + tabBottomPad + sectionBottom
+    local railHeight = sectionTopPad
+        + tabTopPad
+        + (count * renderedTabH)
+        + renderedGaps
+        + tabBottomPad
+        + sectionBottomPad
+        + 4
+
     local required = Layout.TopbarH + Geometry.FooterH + railHeight
 
-    return math.max(Layout.WindowMinH, required)
+    return math.max(Layout.WindowMinH, math.ceil(required))
 end
 
 local function EnsureWindowFitsTabs()
