@@ -1580,8 +1580,8 @@ local function DrawGlassBorder(th)
     local distance = (os.clock() * 92) % perimeter
     local trail = mix(th.AccentA, th.AccentB, 0.5)
 
-    local trailLength = 78
-    local trailSegments = 24
+    local trailLength = 180
+    local trailSegments = 48
     local previousX, previousY = GlassBorderPoint(distance, x, y, w, h, radius)
 
     for i = 1, trailSegments do
@@ -1589,8 +1589,8 @@ local function DrawGlassBorder(th)
         local offset = -trailLength * progress
         local px, py = GlassBorderPoint(distance + offset,
                                          x, y, w, h, radius)
-        local alpha = 0.88 * (1 - progress) ^ 1.65
-        local thickness = 3.6 * (1 - progress) ^ 0.72
+        local alpha = 1.0 * (1 - progress) ^ 1.15
+        local thickness = 5.0 * (1 - progress) ^ 0.55
 
         Line(previousX, previousY, px, py, trail, 20 + i,
              math.max(0.65, thickness), alpha)
@@ -1599,7 +1599,7 @@ local function DrawGlassBorder(th)
     end
 
     local headX, headY = GlassBorderPoint(distance, x, y, w, h, radius)
-    Circle(headX, headY, 4.2, trail, 34, true, 1, 16, 1)
+    Circle(headX, headY, 4.8, trail, 34, true, 1, 20, 1)
     Circle(headX, headY, 1.7, Color3.new(1, 1, 1), 35, true, 1, 12, 1)
 end
 
