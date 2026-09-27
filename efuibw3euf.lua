@@ -133,6 +133,7 @@ local Layout = {
 
     -- tab / section
     TabRowH         = 34,
+    TabGap          = 7,
     TabIcon         = 16,
     SectionH        = 22,
     SectionGap      = 8,
@@ -283,6 +284,23 @@ local function GlassSurface(x, y, w, h, color, z, corner)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = GlassSurfaceAlpha * FrameAlpha
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+end
+
+local function SolidSurface(x, y, w, h, color, z, corner)
+    if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
+    local o, l = Take("Square")
+    local depth = Layer(z)
+
+    if l.X ~= x or l.Y ~= y then l.X, l.Y = x, y; o.Position = Vector2.new(x, y) end
+    if l.W ~= w or l.H ~= h then l.W, l.H = w, h; o.Size = Vector2.new(w, h) end
+    if l.Color ~= color then l.Color = color; o.Color = color end
+    if not l.Filled then l.Filled = true; o.Filled = true end
+    if l.Corner ~= corner then l.Corner = corner; o.Corner = corner end
+    if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
+
+    -- Fully solid surface. Only the normal window fade can reduce it.
+    local a = FrameAlpha
     if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
@@ -1609,12 +1627,13 @@ local function DrawTabRail()
 
     -- Solid sidebar surface. This sits inside the main glass shell and only
     -- covers the navigation rail, leaving the content area translucent.
-    Rect(Geometry.RailX, Geometry.RailY, Geometry.RailW, Geometry.RailH,
-         rgb(12, 15, 23), 35, 0, 0.92)
+    SolidSurface(Geometry.RailX, Geometry.RailY, Geometry.RailW, Geometry.RailH,
+                 rgb(10, 13, 20), 35, 0)
 
     local rowY = Geometry.RailY + 12
     local padX = 8
     local rowH = Layout.TabRowH
+    local tabGap = Layout.TabGap
     local iconSize = Layout.TabIcon
 
     for i, tab in ipairs(State.Tabs) do
@@ -1637,10 +1656,11 @@ local function DrawTabRail()
                 tab.Hover = hover and 1 or 0
             end
 
-            -- soft neutral tab surface; the accent is used only as a state indicator.
-            local bgColor = mix(th.Panel, th.PanelHi, tab.Hover * 0.7 + tab.Glow * 0.3)
-            local bgAlpha = 0.35 + 0.25 * tab.Hover + 0.12 * tab.Glow
-            Rect(x, y, w, rowH, bgColor, 40, 7, bgAlpha)
+            -- Tabs sit on top of the solid rail as their own slightly lighter layer.
+            -- This keeps every tab visually separated from the sidebar surface.
+            local stateMix = tab.Hover * 0.65 + tab.Glow * 0.35
+            local bgColor = mix(rgb(23, 27, 38), rgb(30, 35, 48), stateMix)
+            SolidSurface(x, y, w, rowH, bgColor, 40, 7)
 
             -- slim active indicator, kept outside the icon/text area.
             if tab.Glow > 0.01 then
@@ -1686,7 +1706,7 @@ local function DrawTabRail()
                 Input.Click = false
             end
 
-            rowY = rowY + rowH + 4
+            rowY = rowY + rowH + tabGap
         end
     end
 
