@@ -1499,9 +1499,9 @@ local function DrawFrame()
     -- Compact footer strip. It is part of the same outer glass shell rather
     -- than another window/frame, and only occupies the bottom 20 pixels.
     local footerY = State.Y + State.H - 20
-    SolidSurface(State.X + Layout.Corner, footerY,
+    GlassSurface(State.X + Layout.Corner, footerY,
                  math.max(1, State.W - Layout.Corner * 2), 19,
-                 rgb(11, 14, 21), 15, 0)
+                 rgb(18, 21, 30), 15, 0)
     Line(State.X + Layout.Corner, footerY,
          State.X + State.W - Layout.Corner, footerY,
          th.Divider, 16, 1, 0.20)
@@ -1626,8 +1626,8 @@ local function TickRailOpen(dt)
                            Geometry.RailW, Geometry.RailH)
 
     local target = (State.RailPinned or inRail) and 1 or 0
-    State.RailOpen = Approach(State.RailOpen, target, 14, dt)
-    if math.abs(State.RailOpen - target) < 0.005 then
+    State.RailOpen = Approach(State.RailOpen, target, 9, dt)
+    if math.abs(State.RailOpen - target) < 0.002 then
         State.RailOpen = target
     end
 end
