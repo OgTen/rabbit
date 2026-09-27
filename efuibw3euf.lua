@@ -1072,8 +1072,8 @@ local State = {
     X = 100, Y = 100,
     W = Layout.WindowW,
     H = Layout.WindowH,
-    Visible = 1,          -- 0..1 animation
-    Open = true,
+    Visible = 0,          -- 0..1 animation; hidden until CreateWindow starts startup
+    Open = false,
 
     -- drag / resize
     Drag        = nil,    -- { GrabX, GrabY }
@@ -1700,21 +1700,19 @@ local function DrawStartupBranding()
 
     -- Keep this frame compact. The image is intentionally large inside the
     -- short frame without increasing the frame height.
-    local logoSize = math.min(50, math.max(44, h - 20))
-    local titleSize = math.min(17, math.max(14, h * 0.22))
+    local logoSize = math.min(38, math.max(34, h - 18))
+    local titleSize = math.min(15, math.max(13, h * 0.24))
     local title = "SHADOW UI"
     local titleW = TextWidth(title, titleSize, FontBold)
-    local gap = 9
+    local gap = 8
     local groupW = logoSize + gap + titleW
     local groupX = x + (w - groupW) / 2
-    local logoY = y + math.floor((h - logoSize) / 2) - 2
+    local logoY = y + math.floor((h - logoSize) / 2) - 1
 
+    -- Keep startup branding fully visible for the entire compact frame and
+    -- expansion. The custom image may finish downloading after loading starts,
+    -- so fading it during expansion can make it appear only at the very end.
     local fade = 1
-    if st.Phase == "pop" then
-        local fadeT = math.min(st.Time / 0.12, 1)
-        fade = 1 - fadeT
-        fade = fade * fade
-    end
 
     -- The title is drawn FIRST. The image is drawn over its left side so the
     -- title physically appears to emerge from behind the logo's right edge.
@@ -1752,11 +1750,10 @@ local function DrawStartupBranding()
     if st.LogoImage then
         st.LogoImage.Position = Vector2.new(groupX, logoY)
         st.LogoImage.Size = Vector2.new(logoSize, logoSize)
-        -- Matcha Drawing transparency is true transparency: 0 = opaque,
-        -- 1 = fully invisible. Keep the custom image fully visible while
-        -- loading, then fade it out rapidly during the window pop.
-        st.LogoImage.Transparency = 1 - fade
-        st.LogoImage.Visible = fade > 0.001
+        -- Matcha Drawing transparency: 0 = opaque, 1 = invisible.
+        -- Keep the logo visible until the full window is ready.
+        st.LogoImage.Transparency = 0
+        st.LogoImage.Visible = true
     else
         Rect(groupX, logoY, logoSize, logoSize, accent, 34, 5, 0.18 * fade)
         Stroke(groupX, logoY, logoSize, logoSize, accent, 35, 5, 0.55 * fade)
@@ -1764,19 +1761,16 @@ local function DrawStartupBranding()
                    accent, titleSize + 2, FontBold, 36, fade)
     end
 
-    local barW = math.min(170, math.max(125, w - 34))
-    local barH = 3
+    local barW = math.min(155, math.max(110, w - 30))
+    local barH = 2
     local barX = x + (w - barW) / 2
-    local barY = y + h - 9
+    local barY = y + h - 6
     Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42 * fade)
     if st.Progress > 0 then
         Rect(barX, barY, math.max(1, barW * st.Progress), barH,
              accent, 31, 2, 0.95 * fade)
     end
 
-    if fade <= 0.001 and st.LogoImage then
-        pcall(function() st.LogoImage.Visible = false end)
-    end
 end
 
 local function DrawStartupFrame()
@@ -1859,8 +1853,8 @@ local function StartStartup(opts)
     st.TargetW, st.TargetH = State.W, State.H
     st.TargetX, st.TargetY = State.X, State.Y
 
-    st.StartW = math.min(270, math.max(245, st.TargetW * 0.35))
-    st.StartH = 70
+    st.StartW = math.min(260, math.max(230, st.TargetW * 0.34))
+    st.StartH = 54
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
