@@ -1121,6 +1121,55 @@ end
 
 local Geometry = { FooterH = 20 }
 
+-- Navigation is generated dynamically, so the window minimum height follows
+-- the number of visible tabs. This keeps the final tab inside the window.
+local function GetVisibleTabCount()
+    local count = 0
+    for _, tab in ipairs(State.Tabs) do
+        if not tab.Hidden then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function GetRequiredWindowHeight()
+    local count = GetVisibleTabCount()
+    if count <= 0 then
+        return 340
+    end
+
+    local sectionTop = 5
+    local sectionBottom = 11
+    local tabTop = 11
+    local rows = count * Layout.TabRowH
+    local gaps = math.max(0, count - 1) * Layout.TabGap
+    local railBreathing = 10
+    local safety = 4
+
+    local required = Layout.TopbarH
+        + Geometry.FooterH
+        + railBreathing
+        + sectionTop
+        + tabTop
+        + rows
+        + gaps
+        + sectionBottom
+        + safety
+
+    return math.max(340, required)
+end
+
+local function UpdateWindowMinimums()
+    Layout.WindowMinH = GetRequiredWindowHeight()
+
+    -- If tabs were added after creation, grow the window instead of allowing
+    -- the navigation section to extend past the bottom edge.
+    if State.H < Layout.WindowMinH then
+        State.H = Layout.WindowMinH
+    end
+end
+
 function Geometry.Recalculate()
     Geometry.X = State.X
     Geometry.Y = State.Y
@@ -1321,6 +1370,8 @@ local function TickResize()
         State.Resize = nil
         return
     end
+
+    UpdateWindowMinimums()
 
     State.W = Clamp(r.StartW + (Input.X - r.GrabX),
                     Layout.WindowMinW, 2400)
@@ -4400,6 +4451,10 @@ local function Render()
         return
     end
 
+    -- Keep the window large enough for every visible navigation tab before
+    -- any geometry or rendering work occurs.
+    UpdateWindowMinimums()
+
     -- TickRailOpen uses derived rail geometry. Establish a valid baseline
     -- before any hover/animation math, including on the first render frame.
     Geometry.Recalculate()
@@ -4486,6 +4541,7 @@ ShadowUI.Tabs           = {}
 function ShadowUI:AddTab(opts)
     opts = opts or {}
     local tab = Tab.new(self, opts)
+    UpdateWindowMinimums()
     if opts.Select then
         State.ActiveIndex = #State.Tabs
     end
