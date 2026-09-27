@@ -1074,6 +1074,7 @@ local State = {
     H = Layout.WindowH,
     Visible = 0,          -- 0..1 animation
     Open = false,
+    Ready = false,       -- hard gate: nothing is rendered before CreateWindow/StartStartup
 
     -- drag / resize
     Drag        = nil,    -- { GrabX, GrabY }
@@ -1718,16 +1719,24 @@ local function DrawStartupBranding()
         local data = st.LogoData
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
-            -- Assign Data directly. The older build was able to render the
-            -- image with this ordering; only its layer/alpha were wrong.
-            obj.Data = data
+            -- Keep the image completely independent of the normal Drawing pool.
+            -- Matcha documents Image.Data as the raw binary returned by HttpGet.
+            obj.Visible = false
             obj.Position = Vector2.new(groupX, logoY)
             obj.Size = Vector2.new(logoSize, logoSize)
             obj.Rounding = 5
-            -- Normal UI layers are produced by Layer(z), which expands them
-            -- into the millions. Keep the startup image above that glass pane.
-            obj.ZIndex = 6000000
-            obj.Transparency = 1 - fade
+            obj.ZIndex = 2000001
+            obj.Transparency = 0
+            obj.Color = Color3.fromRGB(255, 255, 255)
+            obj.Data = data
+            -- Matcha accepts the raw binary image string as Data. Re-applying
+            -- the exact same bytes one scheduler turn later forces the external
+            -- renderer to refresh the texture after the Image object is live.
+            task.defer(function()
+                if not State.Alive or State.Startup.LogoImage ~= obj then return end
+                pcall(function() obj.Data = data end)
+                pcall(function() obj.Visible = true end)
+            end)
             obj.Visible = fade > 0.001
             return obj
         end)
@@ -1742,7 +1751,7 @@ local function DrawStartupBranding()
     if st.LogoImage then
         st.LogoImage.Position = Vector2.new(groupX, logoY)
         st.LogoImage.Size = Vector2.new(logoSize, logoSize)
-        st.LogoImage.ZIndex = 6000000
+        st.LogoImage.ZIndex = 2000001
         st.LogoImage.Transparency = 1 - fade
         st.LogoImage.Visible = fade > 0.001
     else
@@ -1863,6 +1872,7 @@ local function StartStartup(opts)
     State.Visible = 1
     State.Open = true
     State.RailOpen = 0
+    State.Ready = true
 end
 
 -- ============================================================================
@@ -4529,6 +4539,15 @@ end
 local LastHotkeyState = false
 
 local function Render()
+    -- Hard startup gate. This prevents even a single frame of the full window
+    -- from being drawn before CreateWindow() initializes the startup sequence.
+    if not State.Ready then
+        ResetPool()
+        HideUnused()
+        FrameAlpha = 0
+        return
+    end
+
     -- The window starts fully visible. Open/close fading only changes this
     -- value after an actual visibility toggle; it must never inherit a stale
     -- fade state from a previous render.
