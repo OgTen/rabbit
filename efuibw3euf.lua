@@ -278,7 +278,7 @@ local function Rect(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
 end
 
 local function Stroke(x, y, w, h, color, z, corner, alpha)
@@ -294,7 +294,7 @@ local function Stroke(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
 end
 
 local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
@@ -308,7 +308,7 @@ local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
 end
 
 local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
@@ -324,7 +324,7 @@ local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
 end
 
 local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
@@ -339,7 +339,7 @@ local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
 end
 
 local function Bar(x1, y1, x2, y2, thickness, color, z, alpha)
@@ -383,7 +383,7 @@ local function Text(text, x, y, color, size, font, z, alpha, room, center)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
 end
 
 local function TextCenter(text, cx, y, color, size, font, z, alpha, room)
@@ -1435,40 +1435,37 @@ end
 local function DrawFrame()
     local th = State.Theme
 
-    -- The entire UI is one glass pane. There are deliberately no inset
-    -- rectangles, shadow frames, or secondary square shells near its edge.
-    -- One continuous frosted surface. The important part here is that the
-    -- glass is rendered as an opaque-tinted pane with only a controlled
-    -- amount of the Roblox scene showing through. Drawing has no real blur,
-    -- so the frost is simulated by a dark tint plus very subtle light washes.
+    -- Matcha's Drawing renderer needs the Roblox-style transparency mapping:
+    -- 0 = fully opaque, 1 = fully transparent. Keep the pane itself strong
+    -- and use the scene visibility only as a subtle glass effect.
+    -- There is ONE silhouette; the additional fills are interior glass layers,
+    -- not borders or inset frames.
     Rect(State.X, State.Y, State.W, State.H,
-         th.Base, 10, Layout.Corner, 0.86)
+         rgb(22, 25, 35), 10, Layout.Corner, 0.88)
 
-    -- Subtle internal glass tint. These are not borders or extra frames;
-    -- they stay completely inside the same outer silhouette and give the pane
-    -- the frosted/acrylic depth that a single transparent rectangle lacks.
-    local washH = math.max(1, math.floor(State.H * 0.46))
-    Rect(State.X + 1, State.Y + 1, State.W - 2, washH,
-         mix(th.Panel, th.Base, 0.35), 10, math.max(1, Layout.Corner - 1), 0.16)
-    Rect(State.X + 1, State.Y + washH, State.W - 2, State.H - washH - 1,
-         mix(th.Base, Color3.new(0, 0, 0), 0.12), 10, 0, 0.10)
+    -- Frosted depth: a slightly lighter upper layer and darker lower layer.
+    -- Both share the exact same silhouette so they read as one glass surface.
+    local split = math.floor(State.H * 0.52)
+    Rect(State.X + 1, State.Y + 1, State.W - 2, split,
+         mix(th.Base, th.Panel, 0.45), 11, math.max(1, Layout.Corner - 1), 0.82)
+    Rect(State.X + 1, State.Y + split, State.W - 2, State.H - split - 1,
+         mix(th.Base, Color3.new(0, 0, 0), 0.18), 11, 0, 0.84)
 
-    -- A very soft highlight near the top gives the pane its glass/acrylic
-    -- surface instead of making it look like a flat opaque rectangle.
+    -- Very restrained acrylic reflection.
     Rect(State.X + Layout.Corner, State.Y + 1,
          math.max(1, State.W - Layout.Corner * 2), 1,
-         Color3.new(1, 1, 1), 13, 0, 0.10)
+         Color3.new(1, 1, 1), 12, 0, 0.78)
 
-    -- Only separators are used for the internal structure.
+    -- Internal structure only; no additional square shells.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.38)
+         th.Divider, 14, 1, 0.68)
 
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
-         th.Divider, 14, 1, 0.32)
+         th.Divider, 14, 1, 0.72)
 
-    -- Draw the single outer glass edge last so it remains clean and continuous.
+    -- Keep the single animated glass edge on top.
     DrawGlassBorder(th)
 end
 
