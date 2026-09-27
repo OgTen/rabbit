@@ -1646,10 +1646,26 @@ end
 local function DrawStartupFrame()
     local th = State.Theme
     local x, y, w, h = State.X, State.Y, State.W, State.H
+
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
     DrawGlassBorder(th)
 
-    -- Keep the existing loading indicator, but without any startup logo/text.
+    -- Static startup title. No logo and no text animation.
+    local title = "SHADOW UI"
+    local titleSize = 16
+    local titleW = TextWidth(title, titleSize, FontBold)
+    Text(title,
+         x + (w - titleW) / 2,
+         y + 12,
+         th.Text,
+         titleSize,
+         FontBold,
+         32,
+         1,
+         titleW + 2,
+         false)
+
+    -- Existing loading bar.
     local barW = math.min(190, math.max(135, w - 38))
     local barH = 4
     local barX = x + (w - barW) / 2
@@ -1657,8 +1673,13 @@ local function DrawStartupFrame()
 
     Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
     if State.Startup.Progress > 0 then
-        Rect(barX, barY, math.max(1, barW * State.Startup.Progress), barH,
-             th.Accent, 31, 2, 0.95)
+        Rect(barX, barY,
+             math.max(1, barW * State.Startup.Progress),
+             barH,
+             th.Accent,
+             31,
+             2,
+             0.95)
     end
 end
 
