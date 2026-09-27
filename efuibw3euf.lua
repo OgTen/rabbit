@@ -1699,7 +1699,7 @@ local function DrawTabRail()
     local motion = 1 - ((1 - openAmt) * (1 - openAmt) * (1 - openAmt))
     local slideOffset = (1 - motion) * 14
 
-    local sectionX = Geometry.RailX + sectionPadX - slideOffset
+    local sectionX = Geometry.RailX + sectionPadX + slideOffset
     local sectionY = Geometry.RailY + 5
     local sectionW = math.max(40, railW - sectionPadX * 2)
     local sectionH = math.max(44, Geometry.RailH - 10)
