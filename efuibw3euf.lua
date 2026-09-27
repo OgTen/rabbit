@@ -1117,7 +1117,11 @@ function Tab.new(parent, opts)
         -- pending redraw pass
         Dirty    = true,
     }, Tab)
+    State.Tabs[#State.Tabs + 1] = self
+    -- also mirror on the parent table so ShadowUI.Tabs stays in sync
+    parent.Tabs = parent.Tabs or {}
     parent.Tabs[#parent.Tabs + 1] = self
+
     return self
 end
 
@@ -1141,6 +1145,7 @@ function Section.new(tab, title)
         Rows   = {},
         HeaderH = Layout.SectionH,
     }, Section)
+    tab.Rows = tab.Rows or {}
     tab.Rows[#tab.Rows + 1] = self
     return self
 end
@@ -4246,6 +4251,7 @@ local ShadowUI = {}
 ShadowUI.Themes         = Themes
 ShadowUI.Layout         = Layout
 ShadowUI.State          = State
+ShadowUI.Tabs           = {}
 
 -- tabs ----------------------------------------------------------------------
 function ShadowUI:AddTab(opts)
@@ -4373,6 +4379,18 @@ for _, ctrlName in ipairs({
     AttachControl(InlineRow, "Add" .. ctrlName, ctrlName)
 end
 
+-- [FIX] allow chaining control creation: `row:AddToggle({}):AddToggle({})`
+for _, ctrlName in ipairs({
+    "Label", "Divider", "Toggle", "Slider", "RangeSlider",
+    "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
+}) do
+    local ctor = Controls[ctrlName]
+    if ctor then
+        Base["Add" .. ctrlName] = function(self, opts)
+            return ctor(self.Parent, opts)
+        end
+    end
+end
 
 _G.ShadowUI = ShadowUI
 _G.Shadow   = ShadowUI   -- alias
