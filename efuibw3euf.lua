@@ -1118,7 +1118,14 @@ end
 --  WINDOW GEOMETRY  --  derived every frame from State.X/Y/W/H
 -- ============================================================================
 
-local Geometry = { FooterH = 10 }
+local Geometry = {
+    FooterH = 10,
+    X = 0, Y = 0, W = 0, H = 0,
+    TopY = 0, TopH = 0,
+    RailX = 0, RailY = 0, RailW = 0, RailH = 0,
+    ContentX = 0, ContentY = 0, ContentW = 0, ContentH = 0,
+    InnerX = 0, InnerY = 0, InnerW = 0, InnerH = 0,
+}
 
 function Geometry.Recalculate()
     Geometry.X = State.X
@@ -1153,6 +1160,10 @@ function Geometry.Recalculate()
     Geometry.InnerW = Geometry.ContentW - Layout.ContentPadX * 2 - Layout.ScrollbarW
     Geometry.InnerH = Geometry.ContentH - Layout.ContentPadY * 2
 end
+
+-- Prime derived geometry once so an executor cannot enter the render callback
+-- with an entirely uninitialized geometry table.
+Geometry.Recalculate()
 
 -- ============================================================================
 --  TABS  --  structural data
@@ -1620,6 +1631,13 @@ end
 -- ============================================================================
 
 local function TickRailOpen(dt)
+    -- Defensive guard for executors that begin the render callback before any
+    -- geometry pass has populated the derived rail coordinates.
+    if Geometry.RailX == nil or Geometry.RailY == nil
+       or Geometry.RailW == nil or Geometry.RailH == nil then
+        Geometry.Recalculate()
+    end
+
     -- Only the actual collapsed tab/icon area opens the rail.
     -- The expanded width is intentionally NOT part of the initial trigger zone.
     local sectionPadX = 7
@@ -4379,8 +4397,8 @@ local function Render()
         return
     end
 
-    -- TickRailOpen needs the previous frame geometry because its hover trigger
-    -- uses the rail coordinates. Calculate that baseline before reading them.
+    -- TickRailOpen uses rail geometry for its hover trigger. Always establish a
+    -- valid baseline first, even on the very first render frame.
     Geometry.Recalculate()
 
     -- animate/state updates first. Recalculate again after these updates so every
