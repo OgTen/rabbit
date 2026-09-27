@@ -1693,13 +1693,10 @@ local function DrawTabRail()
     -- its own floating section. It is slightly larger than the previous build.
     local sectionPadX = 7
 
-    -- New sidebar motion: the detached navigation layer slides into place
-    -- while it expands. The rail geometry itself stays unchanged so hover,
-    -- clicking and the content layout remain stable throughout the animation.
-    local motion = 1 - ((1 - openAmt) * (1 - openAmt) * (1 - openAmt))
-    local slideOffset = (1 - motion) * 14
-
-    local sectionX = Geometry.RailX + sectionPadX - slideOffset
+    -- Keep the detached navigation anchored to the same left edge while
+    -- the rail expands. The animation is handled by the rail width and the
+    -- tab contents, not by shifting the whole sidebar horizontally.
+    local sectionX = Geometry.RailX + sectionPadX
     local sectionY = Geometry.RailY + 5
     local sectionW = math.max(40, railW - sectionPadX * 2)
     local sectionH = math.max(44, Geometry.RailH - 10)
