@@ -1691,15 +1691,12 @@ local function DrawTabRail()
     -- Detached navigation container: no full-height sidebar fill.
     -- Keep a clear gap from the main window edge so the navigation reads as
     -- its own floating section. It is slightly larger than the previous build.
-    local sectionPadX = 7
+    local sectionPadX = 4
 
     -- New sidebar motion: the detached navigation layer slides into place
     -- while it expands. The rail geometry itself stays unchanged so hover,
     -- clicking and the content layout remain stable throughout the animation.
-    local motion = 1 - ((1 - openAmt) * (1 - openAmt) * (1 - openAmt))
-    local slideOffset = (1 - motion) * 14
-
-    local sectionX = Geometry.RailX + sectionPadX - slideOffset
+    local sectionX = Geometry.RailX + sectionPadX
     local sectionY = Geometry.RailY + 5
     local sectionW = math.max(40, railW - sectionPadX * 2)
     local sectionH = math.max(44, Geometry.RailH - 10)
@@ -1721,13 +1718,14 @@ local function DrawTabRail()
             -- The tab itself grows continuously with the sidebar animation.
             -- This keeps the navigation feeling like one connected motion
             -- instead of making the cards snap between collapsed/expanded sizes.
-            -- Keep every tab fully inside the detached sidebar section.
-            -- The previous width was based directly on the rail width, while
-            -- the section itself is inset from the rail edges. That made the
-            -- tab extend slightly past the section on the right.
+            -- Size the tab from the actual detached section width so the
+            -- tab always stays fully inside the rounded sidebar container.
+            -- The section is slightly wider than before, while the tab keeps
+            -- the same inner padding on both sides.
             local sectionTabW = math.max(1, sectionW - padX * 2)
-            local w = sectionTabW
             local narrowTabW = sectionTabW
+            local wideTabW = sectionTabW
+            local w = sectionTabW
 
             local hover = MouseIn(x, y, w, rowH)
             local active = (State.ActiveIndex == i)
