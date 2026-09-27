@@ -1360,64 +1360,134 @@ end
 --  WINDOW FRAME  --  background, top bar, shadow, resize indicator
 -- ============================================================================
 
+local function GlassBorderPoint(distance, x, y, w, h, radius)
+    local straightW = math.max(0, w - radius * 2)
+    local straightH = math.max(0, h - radius * 2)
+    local arc = math.pi * radius / 2
+
+    local top = straightW
+    local topRight = top + arc
+    local right = topRight + straightH
+    local bottomRight = right + arc
+    local bottom = bottomRight + straightW
+    local bottomLeft = bottom + arc
+    local left = bottomLeft + straightH
+    local total = left + arc
+
+    local d = distance % total
+
+    if d <= top then
+        return x + radius + d, y
+    elseif d <= topRight then
+        local a = -math.pi / 2 + (d - top) / radius
+        return x + w - radius + math.cos(a) * radius,
+               y + radius + math.sin(a) * radius
+    elseif d <= right then
+        return x + w, y + radius + (d - topRight)
+    elseif d <= bottomRight then
+        local a = (d - right) / radius
+        return x + w - radius + math.cos(a) * radius,
+               y + h - radius + math.sin(a) * radius
+    elseif d <= bottom then
+        return x + w - radius - (d - bottomRight), y + h
+    elseif d <= bottomLeft then
+        local a = math.pi / 2 + (d - bottom) / radius
+        return x + radius + math.cos(a) * radius,
+               y + h - radius + math.sin(a) * radius
+    elseif d <= left then
+        return x, y + h - radius - (d - bottomLeft)
+    else
+        local a = math.pi + (d - left) / radius
+        return x + radius + math.cos(a) * radius,
+               y + radius + math.sin(a) * radius
+    end
+end
+
+local function DrawGlassBorder(th)
+    local x, y = State.X, State.Y
+    local w, h = State.W, State.H
+    local radius = math.min(Layout.Corner, math.max(2, math.min(w, h) / 2 - 1))
+
+    -- A single, restrained glass edge. The window remains one silhouette.
+    Stroke(x, y, w, h, th.Stroke, 20, Layout.Corner, 0.58)
+
+    -- Faint accent edge underneath the moving light.
+    Stroke(x + 1, y + 1, w - 2, h - 2, th.AccentDim, 20, math.max(1, Layout.Corner - 1), 0.22)
+
+    if State.NoAnim then
+        return
+    end
+
+    -- The highlight travels around the complete rounded perimeter.
+    local straightW = math.max(0, w - radius * 2)
+    local straightH = math.max(0, h - radius * 2)
+    local perimeter = 2 * straightW + 2 * straightH + 2 * math.pi * radius
+    local speed = 92
+    local distance = (os.clock() * speed) % perimeter
+
+    local accent = mix(th.AccentA, th.AccentB, 0.5)
+
+    -- Short soft trail.
+    local tx1, ty1 = GlassBorderPoint(distance - 22, x, y, w, h, radius)
+    local tx2, ty2 = GlassBorderPoint(distance - 10, x, y, w, h, radius)
+    local tx3, ty3 = GlassBorderPoint(distance, x, y, w, h, radius)
+
+    Circle(tx1, ty1, 5.5, accent, 21, true, 1, 20, 0.06)
+    Circle(tx2, ty2, 4.5, accent, 22, true, 1, 20, 0.12)
+    Circle(tx3, ty3, 2.2, Color3.new(1, 1, 1), 23, true, 1, 16, 0.92)
+end
+
 local function DrawFrame()
     local th = State.Theme
 
-    -- soft shadow
+    -- Soft outer shadow. It stays outside the glass shell and never creates
+    -- another visible frame.
     if not State.NoAnim then
-        local shadowSteps = 3
+        local shadowSteps = 4
         for i = shadowSteps, 1, -1 do
             local pad = i * 2
             Rect(State.X - pad, State.Y - pad + 2,
                  State.W + pad * 2, State.H + pad * 2,
                  Color3.new(0, 0, 0), 5,
                  Layout.Corner + i,
-                 0.022 / i)
+                 0.018 / i)
         end
     end
 
-    -- main background
+    -- Main frosted-glass tint. Low opacity lets the Roblox scene remain
+    -- visible through the window instead of producing an opaque panel.
     Rect(State.X, State.Y, State.W, State.H,
-         th.Base, 10, Layout.Corner, 1.0)
+         th.Base, 10, Layout.Corner, 0.48)
 
-    -- accent stroke at top
-    GradientRect(
-        State.X + Layout.Corner, State.Y + 1,
-        State.W - Layout.Corner * 2, 1.5,
-        th.AccentA, th.AccentB, 12, 0.55
-    )
+    -- Very subtle inner glass layers. These are intentionally borderless;
+    -- they tint the rail/content without creating the old "two frames" look.
+    local topH = math.max(0, Layout.TopbarH - 1)
+    Rect(State.X + 1, State.Y + 1, State.W - 2, topH,
+         th.Panel, 11, 0, 0.30)
 
-    -- subtle border
-    Stroke(State.X, State.Y, State.W, State.H,
-           th.Stroke, 20, Layout.Corner, 0.88)
-
-    -- top bar
-    Rect(State.X + 1, State.Y + 1, State.W - 2, Layout.TopbarH - 1,
-         th.Panel, 12, 0, 1.0)
-
-    -- bottom of topbar divider
-    Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
-         State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 13, 1, 0.95)
-
-    -- Inner surfaces stay one pixel inside the outer rounded shell.
-    -- They never own the window silhouette, so they cannot square off
-    -- the outer corners or overlap the border.
     local innerY = State.Y + Layout.TopbarH
-    local innerH = math.max(0, State.H - Layout.TopbarH - Layout.Corner)
+    local innerH = math.max(0, State.H - Layout.TopbarH - 1)
 
     Rect(State.X + 1, innerY,
          math.max(0, Geometry.RailW - 2), innerH,
-         th.Panel, 13, 0, 1.0)
+         th.Panel, 12, 0, 0.20)
 
     Rect(Geometry.ContentX, innerY,
          math.max(0, State.W - Geometry.RailW - 1), innerH,
-         th.Base, 14, 0, 1.0)
+         th.Base, 13, 0, 0.10)
 
-    -- rail/content divider
+    -- Topbar divider and rail divider are deliberately faint.
+    Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
+         State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
+         th.Divider, 14, 1, 0.32)
+
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
-         th.Divider, 15, 1, 0.9)
+         th.Divider, 14, 1, 0.26)
+
+    -- The animated glass edge is drawn last so the light stays visible over
+    -- every translucent layer while still remaining underneath the UI content.
+    DrawGlassBorder(th)
 end
 
 -- ============================================================================
