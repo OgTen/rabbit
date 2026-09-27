@@ -1118,7 +1118,7 @@ end
 --  WINDOW GEOMETRY  --  derived every frame from State.X/Y/W/H
 -- ============================================================================
 
-local Geometry = {}
+local Geometry = { FooterH = 20 }
 
 function Geometry.Recalculate()
     Geometry.X = State.X
@@ -1133,7 +1133,9 @@ function Geometry.Recalculate()
     -- tab rail (left side)
     Geometry.RailX = State.X
     Geometry.RailY = State.Y + Geometry.TopH
-    Geometry.RailH = State.H - Geometry.TopH
+    -- Reserve a compact footer strip at the bottom of the window.
+    Geometry.FooterH = 20
+    Geometry.RailH = math.max(1, State.H - Geometry.TopH - Geometry.FooterH)
 
     local wide = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
     local open = State.RailOpen
@@ -1494,6 +1496,16 @@ local function DrawFrame()
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
          th.Divider, 14, 1, 0.20)
 
+    -- Compact footer strip. It is part of the same outer glass shell rather
+    -- than another window/frame, and only occupies the bottom 20 pixels.
+    local footerY = State.Y + State.H - 20
+    SolidSurface(State.X + Layout.Corner, footerY,
+                 math.max(1, State.W - Layout.Corner * 2), 19,
+                 rgb(11, 14, 21), 15, 0)
+    Line(State.X + Layout.Corner, footerY,
+         State.X + State.W - Layout.Corner, footerY,
+         th.Divider, 16, 1, 0.20)
+
     -- Single animated glass edge.
     DrawGlassBorder(th)
 end
@@ -1681,8 +1693,15 @@ local function DrawTabRail()
                      th.Accent, 42, 1, tab.Glow * 0.95)
             end
 
-            -- icon column
-            local iconX = x + 11
+            -- icon column. When the rail is collapsed there is no label, so
+            -- center the icon in the entire tab instead of leaving it offset
+            -- toward the old label position.
+            local iconX
+            if openAmt < 0.5 then
+                iconX = x + math.max(0, (w - iconSize) / 2)
+            else
+                iconX = x + 11
+            end
             local iconY = y + (rowH - iconSize) / 2
             local iconAlpha = 0.55 + 0.45 * math.max(tab.Glow, tab.Hover)
             local iconColor = tab.Glow > 0.5 and th.Accent or th.TextDim
