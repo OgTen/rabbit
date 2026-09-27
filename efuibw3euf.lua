@@ -136,7 +136,13 @@ local Layout = {
     TabGap          = 7,
     TabIcon         = 16,
     SectionH        = 22,
-    SectionGap      = 8,
+    SectionGap      = 12,
+    SectionColumnGap = 12,
+    SectionPadX     = 12,
+    SectionPadY     = 11,
+    SectionCorner   = 12,
+    SectionTitleH   = 18,
+    SectionDescH    = 16,
 
     -- content
     ContentPadX     = 18,
@@ -1231,12 +1237,17 @@ end
 local Section = {}
 Section.__index = Section
 
-function Section.new(tab, title)
+function Section.new(tab, title, description)
     local self = setmetatable({
-        Parent = tab,
-        Title  = title or "Section",
-        Rows   = {},
-        HeaderH = Layout.SectionH,
+        Parent      = tab,
+        Title       = title or "Section",
+        Description = description or "",
+        Rows        = {},
+        HeaderH     = Layout.SectionH,
+        _layoutX    = 0,
+        _layoutY    = 0,
+        _layoutW    = 0,
+        _layoutH    = 0,
     }, Section)
     tab.Rows = tab.Rows or {}
     tab.Rows[#tab.Rows + 1] = self
@@ -2433,36 +2444,134 @@ end
 
 local ContentCursor = { y = 0 }
 
-local function DrawRow(row, x, y, w)
-    if row.Hidden then return 0 end
+-- Forward declarations used by section rendering/input.
+local DrawRow
+local InputRow
 
-    -- Section: header + nested rows
-    if getmetatable(row) == Section then
-        local hy = y + 4
-        Text(string.upper(row.Title),
-             x, hy,
-             State.Theme.TextMuted, Layout.TinySize, FontBold,
-             50, 0.8, w)
-        -- underline
-        local underY = hy + 12
-        Line(x, underY, x + w, underY, State.Theme.Divider, 51, 1, 0.5)
+local function IsSection(row)
+    return getmetatable(row) == Section
+end
 
-        local cy = underY + Layout.SectionGap
-        for _, child in ipairs(row.Rows) do
-            if not child.Hidden then
-                cy = cy + DrawRow(child, x, cy, w) + Layout.RowGapY
+local function GetSectionHeaderHeight(section)
+    if section.Description and section.Description ~= "" then
+        return Layout.SectionTitleH + Layout.SectionDescH + 4
+    end
+    return Layout.SectionTitleH + 4
+end
+
+local function MeasureSection(section, w)
+    local panelW = math.max(1, w)
+    local innerW = math.max(1, panelW - Layout.SectionPadX * 2)
+    local contentH = 0
+
+    for _, child in ipairs(section.Rows or {}) do
+        if not child.Hidden then
+            if getmetatable(child) == InlineRow then
+                local h = 0
+                for _, ctrl in ipairs(child.Cells or {}) do
+                    if not ctrl.Hidden then
+                        h = math.max(h, ctrl.Height or Layout.RowHeight)
+                    end
+                end
+                contentH = contentH + (h > 0 and h or Layout.RowHeight)
+            else
+                contentH = contentH + (child.Height or Layout.RowHeight)
             end
+            contentH = contentH + Layout.RowGapY
         end
-        return cy - y
     end
 
-    -- Inline row
+    if contentH > 0 then
+        contentH = contentH - Layout.RowGapY
+    end
+
+    local headerH = GetSectionHeaderHeight(section)
+    local panelH = Layout.SectionPadY * 2 + math.max(Layout.RowHeight, contentH)
+    return headerH + panelH
+end
+
+local function DrawSection(section, x, y, w)
+    local headerH = GetSectionHeaderHeight(section)
+    local panelY = y + headerH
+    local panelH = MeasureSection(section, w) - headerH
+    local innerX = x + Layout.SectionPadX
+    local innerY = panelY + Layout.SectionPadY
+    local innerW = math.max(1, w - Layout.SectionPadX * 2)
+
+    section._layoutX = x
+    section._layoutY = y
+    section._layoutW = w
+    section._layoutH = headerH + panelH
+
+    Text(section.Title,
+         x, y,
+         State.Theme.Text, Layout.TitleSize, FontBold,
+         50, 0.98, w)
+
+    if section.Description and section.Description ~= "" then
+        Text(section.Description,
+             x, y + Layout.SectionTitleH,
+             State.Theme.TextDim, Layout.SmallSize, FontSystem,
+             50, 0.72, w)
+    end
+
+    -- Frosted panel body. The stronger transparency is intentional so the
+    -- controls feel contained without becoming another solid block.
+    FrostedSurface(x, panelY, w, panelH, State.Theme.Panel, 40, Layout.SectionCorner)
+    Stroke(x, panelY, w, panelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+
+    local cy = innerY
+    for _, child in ipairs(section.Rows or {}) do
+        if not child.Hidden then
+            local h
+            if getmetatable(child) == InlineRow then
+                h = LayoutInline(child, innerX, cy, innerW)
+            else
+                h = DrawRow(child, innerX, cy, innerW)
+            end
+            cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
+        end
+    end
+end
+
+local function InputSection(section)
+    local x = section._layoutX or 0
+    local y = section._layoutY or 0
+    local w = section._layoutW or 0
+    local headerH = GetSectionHeaderHeight(section)
+    local panelY = y + headerH
+    local innerX = x + Layout.SectionPadX
+    local innerY = panelY + Layout.SectionPadY
+    local innerW = math.max(1, w - Layout.SectionPadX * 2)
+    local cy = innerY
+
+    for _, child in ipairs(section.Rows or {}) do
+        if not child.Hidden then
+            local h
+            if getmetatable(child) == InlineRow then
+                InputInline(child, innerX, cy, innerW)
+                h = Layout.RowHeight
+            else
+                h = InputRow(child, innerX, cy, innerW)
+            end
+            cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
+        end
+    end
+end
+
+function DrawRow(row, x, y, w)
+    if row.Hidden then return 0 end
+
+    if IsSection(row) then
+        DrawSection(row, x, y, w)
+        return row._layoutH or MeasureSection(row, w)
+    end
+
     if getmetatable(row) == InlineRow then
         local h = LayoutInline(row, x, y, w)
         return h or Layout.RowHeight
     end
 
-    -- Control
     if row.Draw then
         row:Draw(x, y, w)
         return row.Height or Layout.RowHeight
@@ -2471,17 +2580,12 @@ local function DrawRow(row, x, y, w)
     return 0
 end
 
-local function InputRow(row, x, y, w)
+function InputRow(row, x, y, w)
     if row.Hidden then return 0 end
 
-    if getmetatable(row) == Section then
-        local cy = y + 22 + Layout.SectionGap
-        for _, child in ipairs(row.Rows) do
-            if not child.Hidden then
-                cy = cy + InputRow(child, x, cy, w) + Layout.RowGapY
-            end
-        end
-        return cy - y
+    if IsSection(row) then
+        InputSection(row)
+        return row._layoutH or MeasureSection(row, w)
     end
 
     if getmetatable(row) == InlineRow then
@@ -4157,14 +4261,12 @@ local function DrawContent()
     local tab = State.Tabs[State.ActiveIndex]
     if not tab then return end
 
-    -- tab title header
     local titleY = Geometry.ContentY + 6
     local title = tab.Name
     Text(title, Geometry.ContentX + Layout.ContentPadX, titleY,
          State.Theme.Text, 16, FontBold, 60, 0.98,
          Geometry.ContentW - Layout.ContentPadX * 2)
 
-    -- subtitle (optional)
     if tab.Subtitle and tab.Subtitle ~= "" then
         Text(tab.Subtitle,
              Geometry.ContentX + Layout.ContentPadX, titleY + 20,
@@ -4172,18 +4274,14 @@ local function DrawContent()
              Geometry.ContentW - Layout.ContentPadX * 2)
     end
 
-    -- thin underline under the title
     Line(
         Geometry.ContentX + Layout.ContentPadX,
         titleY + (tab.Subtitle and 38 or 22),
         Geometry.ContentX + Geometry.ContentW - Layout.ContentPadX,
         titleY + (tab.Subtitle and 38 or 22),
-        State.Theme.Divider, 60, 1, 0.6
-    )
+        State.Theme.Divider, 60, 1, 0.6)
 
     local headerH = (tab.Subtitle and 42 or 26)
-
-    -- sub-tab bar
     local subH = 0
     if tab.Subs and #tab.Subs > 0 then
         subH = DrawSubTabs(
@@ -4194,58 +4292,98 @@ local function DrawContent()
         )
     end
 
-    -- choose the row container
     local container = tab
     if tab.ActiveSub then container = tab.ActiveSub end
 
-    -- scroll target
     local viewportTop = Geometry.ContentY + headerH + subH + Layout.ContentPadY
     local viewportH = Geometry.ContentH - (headerH + subH) - Layout.ContentPadY * 2
 
-    -- layout pass: measure everything first so we know max scroll
-    local measureY = 0
     local function measureRow(row, x, w, into)
         if row.Hidden then return end
 
-        if getmetatable(row) == Section then
-            into.y = into.y + 22 + Layout.SectionGap
-            for _, child in ipairs(row.Rows or {}) do
-                measureRow(child, x, w, into)
-                into.y = into.y + Layout.RowGapY
-            end
-        elseif getmetatable(row) == InlineRow then
+        if IsSection(row) then
+            local sectionW = w
+            into.y = into.y + MeasureSection(row, sectionW)
+            return
+        end
+
+        if getmetatable(row) == InlineRow then
             local h = 0
             for _, ctrl in ipairs(row.Cells or {}) do
-                if ctrl.Height and ctrl.Height > h then h = ctrl.Height end
+                if not ctrl.Hidden then h = math.max(h, ctrl.Height or Layout.RowHeight) end
             end
             into.y = into.y + (h > 0 and h or Layout.RowHeight)
-        else
-            into.y = into.y + (row.Height or Layout.RowHeight)
+            return
         end
+
+        into.y = into.y + (row.Height or Layout.RowHeight)
     end
 
+    -- Sections are arranged in a maximum of two columns. Non-section rows
+    -- remain full-width and flush the current section row first.
     local acc = { y = 0 }
-    for _, row in ipairs(container.Rows or {}) do
-        measureRow(row, Geometry.InnerX, Geometry.InnerW, acc)
-        acc.y = acc.y + Layout.RowGapY
+    local i = 1
+    while i <= #(container.Rows or {}) do
+        local row = container.Rows[i]
+        if row.Hidden then
+            i = i + 1
+        elseif IsSection(row) then
+            local nextRow = container.Rows[i + 1]
+            local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
+
+            if nextRow and not nextRow.Hidden and IsSection(nextRow) then
+                local h1 = MeasureSection(row, halfW)
+                local h2 = MeasureSection(nextRow, halfW)
+                acc.y = acc.y + math.max(h1, h2) + Layout.SectionGap
+                i = i + 2
+            else
+                acc.y = acc.y + MeasureSection(row, halfW) + Layout.SectionGap
+                i = i + 1
+            end
+        else
+            measureRow(row, Geometry.InnerX, Geometry.InnerW, acc)
+            acc.y = acc.y + Layout.RowGapY
+            i = i + 1
+        end
     end
 
     container.MaxScroll = math.max(0, acc.y - viewportH)
     TickScroll(container, State.Delta)
     HandleWheel(container)
 
-    -- render pass: draw from -scroll offset
     local cy = viewportTop - container.Scroll
-    local baseY = cy
-
-    for _, row in ipairs(container.Rows or {}) do
+    local i = 1
+    while i <= #(container.Rows or {}) do
+        local row = container.Rows[i]
         if not row.Hidden then
-            local h = DrawRow(row, Geometry.InnerX, cy, Geometry.InnerW)
-            cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
+            if IsSection(row) then
+                local nextRow = container.Rows[i + 1]
+                local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
+                local x1 = Geometry.InnerX
+                local x2 = Geometry.InnerX + halfW + Layout.SectionColumnGap
+
+                if nextRow and not nextRow.Hidden and IsSection(nextRow) then
+                    local h1 = MeasureSection(row, halfW)
+                    local h2 = MeasureSection(nextRow, halfW)
+                    DrawSection(row, x1, cy, halfW)
+                    DrawSection(nextRow, x2, cy, halfW)
+                    cy = cy + math.max(h1, h2) + Layout.SectionGap
+                    i = i + 2
+                else
+                    DrawSection(row, x1, cy, halfW)
+                    cy = cy + MeasureSection(row, halfW) + Layout.SectionGap
+                    i = i + 1
+                end
+            else
+                local h = DrawRow(row, Geometry.InnerX, cy, Geometry.InnerW)
+                cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
+                i = i + 1
+            end
+        else
+            i = i + 1
         end
     end
 
-    -- scrollbar
     DrawScrollbar(container)
 end
 
@@ -4257,7 +4395,6 @@ local function InputContent()
     local tab = State.Tabs[State.ActiveIndex]
     if not tab then return end
 
-    -- global pre-checks
     if not MouseIn(Geometry.ContentX, Geometry.ContentY,
                    Geometry.ContentW, Geometry.ContentH) then
         return
@@ -4266,30 +4403,45 @@ local function InputContent()
     local container = tab
     if tab.ActiveSub then container = tab.ActiveSub end
 
-    -- header/sub-tab region absorbs clicks (already handled in DrawSubTabs)
     local subH = 0
     if tab.Subs and #tab.Subs > 0 then
         subH = 24 + Layout.RowGapY
     end
     local headerH = (tab.Subtitle and 42 or 26)
-
     local viewportTop = Geometry.ContentY + headerH + subH + Layout.ContentPadY
-
-    -- offset by scroll
     local cy = viewportTop - container.Scroll
 
-    for _, row in ipairs(container.Rows or {}) do
+    local i = 1
+    while i <= #(container.Rows or {}) do
+        local row = container.Rows[i]
         if not row.Hidden then
-            InputRow(row, Geometry.InnerX, cy, Geometry.InnerW)
-            cy = cy + (row.Height or Layout.RowHeight) + Layout.RowGapY
+            if IsSection(row) then
+                local nextRow = container.Rows[i + 1]
+                local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
+                if nextRow and not nextRow.Hidden and IsSection(nextRow) then
+                    InputSection(row)
+                    InputSection(nextRow)
+                    local h1 = MeasureSection(row, halfW)
+                    local h2 = MeasureSection(nextRow, halfW)
+                    cy = cy + math.max(h1, h2) + Layout.SectionGap
+                    i = i + 2
+                else
+                    InputSection(row)
+                    cy = cy + MeasureSection(row, halfW) + Layout.SectionGap
+                    i = i + 1
+                end
+            else
+                InputRow(row, Geometry.InnerX, cy, Geometry.InnerW)
+                cy = cy + (row.Height or Layout.RowHeight) + Layout.RowGapY
+                i = i + 1
+            end
+        else
+            i = i + 1
         end
     end
 
-    -- click in empty content area = close popups
-    if Input.Click then
-        if State.Popup then
-            State.Popup = nil
-        end
+    if Input.Click and State.Popup then
+        State.Popup = nil
     end
 end
 
@@ -4683,8 +4835,12 @@ function Tab:AddSubTab(name, icon)
     return SubTab.new(self, name, icon)
 end
 
-function Tab:AddSection(title)
-    return Section.new(self, title)
+function Tab:AddSection(title, description)
+    return Section.new(self, title, description)
+end
+
+function SubTab:AddSection(title, description)
+    return Section.new(self, title, description)
 end
 
 function Tab:AddInline(weights)
