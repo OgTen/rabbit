@@ -128,8 +128,8 @@ local Layout = {
     Corner          = 12,
     TopbarH         = 44,
     TabRailW        = 172,
-    TabRailMinW     = 76,
-    TabRailNarrow   = 76,
+    TabRailMinW     = 94,
+    TabRailNarrow   = 94,
 
     -- tab / section
     TabRowH         = 34,
@@ -1705,19 +1705,19 @@ local function DrawTabRail()
         if not tab.Hidden then
             -- The collapsed sidebar is wider now, so the tabs can be slightly
             -- larger without looking stretched or escaping the rounded section.
-            local collapsedPadX = 8
+            local collapsedPadX = 6
             local x = sectionX + collapsedPadX
             local y = rowY
 
             -- Keep a matching right inset so the tab always remains fully
             -- inside the detached sidebar section.
-            local sectionTabRightPad = 8
+            local sectionTabRightPad = 6
             local sectionTabW = math.max(1, sectionW - collapsedPadX - sectionTabRightPad)
 
             -- A modest size increase in the collapsed state. The sidebar
             -- itself provides most of the extra visual presence, rather than
             -- stretching the tab independently.
-            local collapsedScale = 1.12 - (0.12 * openAmt)
+            local collapsedScale = 1.18 - (0.18 * openAmt)
             local narrowTabW = math.max(1, sectionTabW)
             local wideTabW = sectionTabW
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
