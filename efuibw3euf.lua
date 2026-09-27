@@ -1722,10 +1722,12 @@ local function DrawTabRail()
             -- tab always stays fully inside the rounded sidebar container.
             -- The section is slightly wider than before, while the tab keeps
             -- the same inner padding on both sides.
+            -- Give collapsed tabs a little more horizontal room while keeping
+            -- the expanded tabs fully inside the detached sidebar section.
             local sectionTabW = math.max(1, sectionW - padX * 2)
-            local narrowTabW = sectionTabW
+            local narrowTabW = math.max(1, sectionW - padX)
             local wideTabW = sectionTabW
-            local w = sectionTabW
+            local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
             local hover = MouseIn(x, y, w, rowH)
             local active = (State.ActiveIndex == i)
