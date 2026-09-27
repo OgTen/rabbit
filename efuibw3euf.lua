@@ -1630,16 +1630,19 @@ local function DrawTabRail()
 
     -- The tabs now live inside their own detached rounded section. The section
     -- is inset from the sidebar edges so the navigation reads as its own layer.
-    local sectionPadX = math.min(10, math.max(5, (railW - 44) / 2))
+    -- Detached navigation container: no full-height sidebar fill.
+    -- Keep a clear gap from the main window edge so the navigation reads as
+    -- its own floating section. It is slightly larger than the previous build.
+    local sectionPadX = 7
     local sectionX = Geometry.RailX + sectionPadX
-    local sectionY = Geometry.RailY + 7
-    local sectionW = math.max(36, railW - sectionPadX * 2)
-    local sectionH = math.max(40, Geometry.RailH - 14)
+    local sectionY = Geometry.RailY + 5
+    local sectionW = math.max(40, railW - sectionPadX * 2)
+    local sectionH = math.max(44, Geometry.RailH - 10)
 
     SolidSurface(sectionX, sectionY, sectionW, sectionH,
-                 rgb(16, 19, 28), 36, 11)
+                 rgb(16, 19, 28), 36, 12)
 
-    local rowY = sectionY + 10
+    local rowY = sectionY + 11
     local padX = 8
     local rowH = Layout.TabRowH
     local tabGap = Layout.TabGap
