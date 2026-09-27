@@ -1655,6 +1655,16 @@ local function DrawStartupFrame()
 
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
 
+    -- Simple loading indicator. No logo and no animated text.
+    local barW = math.min(220, math.max(140, w - 80))
+    local barH = 4
+    local barX = x + (w - barW) / 2
+    local barY = y + (h - barH) / 2
+
+    Rect(barX, barY, barW, barH, th.Track, 24, 2, 0.55)
+    local fillW = math.max(2, barW * Clamp(st.Progress, 0, 1))
+    Rect(barX, barY, fillW, barH, th.Accent, 25, 2, 1)
+
     -- Draw the border against the exact startup dimensions rather than the
     -- normal window dimensions.
     local oldX, oldY, oldW, oldH = State.X, State.Y, State.W, State.H
