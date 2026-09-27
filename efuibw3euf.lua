@@ -1439,7 +1439,7 @@ local function DrawFrame()
     -- convention is preserved for every primitive, so text and controls keep
     -- their original visibility. Only the main pane is given the glass tint.
     Rect(State.X, State.Y, State.W, State.H,
-         rgb(18, 21, 30), 10, Layout.Corner, 0.52)
+         rgb(18, 21, 30), 10, Layout.Corner, 1)
 
     -- A restrained top reflection. This follows the same outer silhouette and
     -- does not create a second panel or a horizontal split.
