@@ -1630,12 +1630,12 @@ local function TickRailOpen(dt)
     -- The entire detached sidebar section is the hover trigger.
     -- This means the rail opens when the cursor is anywhere over the
     -- sidebar surface, not just when it is directly over a tab.
-    local sectionPadLeft = 12
-    local sectionPadRight = 8
+    local sectionPadLeft = 10
+    local sectionPadRight = 10
     local sectionPadY = 5
-    local sectionX = Geometry.RailX + sectionPadX
+    local sectionX = Geometry.RailX + sectionPadLeft
     local sectionY = Geometry.RailY + sectionPadY
-    local sectionW = math.max(40, Geometry.RailW - sectionPadX * 2)
+    local sectionW = math.max(40, Geometry.RailW - sectionPadLeft - sectionPadRight)
     local sectionH = math.max(44, Geometry.RailH - 10)
 
     local overSidebar = MouseIn(sectionX, sectionY, sectionW, sectionH)
