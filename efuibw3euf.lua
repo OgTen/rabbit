@@ -1581,7 +1581,7 @@ local function DrawGlassBorder(th)
     local trail = mix(th.AccentA, th.AccentB, 0.5)
 
     local trailLength = 350
-    local trailSegments = 120
+    local trailSegments = 140
     local previousX, previousY = GlassBorderPoint(distance, x, y, w, h, radius)
 
     for i = 1, trailSegments do
@@ -1592,20 +1592,20 @@ local function DrawGlassBorder(th)
         -- Drawing transparency: 0 = fully visible, 1 = invisible.
         -- The trail stays bright for most of its length, then fades strongly
         -- toward the final third of the tail.
-        local fade = math.max(0, (progress - 0.62) / 0.38)
-        local alpha = 0.015 + 0.93 * (fade ^ 1.45)
-        local thickness = 14.0 * (1 - progress) ^ 0.48
+        local fade = math.max(0, (progress - 0.70) / 0.30)
+        local alpha = 0.0 + 0.94 * (fade ^ 1.35)
+        local thickness = 18.0 * (1 - progress) ^ 0.42
 
         Line(previousX, previousY, px, py, trail, 20 + i,
-             math.max(2.5, thickness), alpha)
+             math.max(4.0, thickness), alpha)
 
         previousX, previousY = px, py
     end
 
     local headX, headY = GlassBorderPoint(distance, x, y, w, h, radius)
-    Circle(headX, headY, 15, trail, 148, true, 1, 32, 0.18)
-    Circle(headX, headY, 11, trail, 150, true, 1, 28, 0.01)
-    Circle(headX, headY, 4.0, Color3.new(1, 1, 1), 151, true, 1, 20, 0.01)
+    Circle(headX, headY, 20, trail, 148, true, 1, 40, 0.45)
+    Circle(headX, headY, 15, trail, 150, true, 1, 36, 0.0)
+    Circle(headX, headY, 5.5, Color3.new(1, 1, 1), 151, true, 1, 24, 0.0)
 end
 
 local function DrawFrame()
