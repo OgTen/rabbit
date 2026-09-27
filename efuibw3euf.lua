@@ -1696,7 +1696,10 @@ local function DrawTabRail()
     -- New sidebar motion: the detached navigation layer slides into place
     -- while it expands. The rail geometry itself stays unchanged so hover,
     -- clicking and the content layout remain stable throughout the animation.
-    local sectionX = Geometry.RailX + sectionPadX
+    local motion = 1 - ((1 - openAmt) * (1 - openAmt) * (1 - openAmt))
+    local slideOffset = (1 - motion) * 14
+
+    local sectionX = Geometry.RailX + sectionPadX - slideOffset
     local sectionY = Geometry.RailY + 5
     local sectionW = math.max(40, railW - sectionPadX * 2)
     local sectionH = math.max(44, Geometry.RailH - 10)
@@ -1718,9 +1721,13 @@ local function DrawTabRail()
             -- The tab itself grows continuously with the sidebar animation.
             -- This keeps the navigation feeling like one connected motion
             -- instead of making the cards snap between collapsed/expanded sizes.
-            local narrowTabW = math.max(1, Layout.TabRailNarrow - padX * 2)
-            local wideTabW = math.max(1, math.max(Layout.TabRailW, math.floor(State.W * 0.22)) - padX * 2)
-            local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
+            -- Keep every tab fully inside the detached sidebar section.
+            -- The previous width was based directly on the rail width, while
+            -- the section itself is inset from the rail edges. That made the
+            -- tab extend slightly past the section on the right.
+            local sectionTabW = math.max(1, sectionW - padX * 2)
+            local w = sectionTabW
+            local narrowTabW = sectionTabW
 
             local hover = MouseIn(x, y, w, rowH)
             local active = (State.ActiveIndex == i)
