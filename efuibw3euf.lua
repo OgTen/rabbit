@@ -1630,7 +1630,8 @@ local function TickRailOpen(dt)
     -- The entire detached sidebar section is the hover trigger.
     -- This means the rail opens when the cursor is anywhere over the
     -- sidebar surface, not just when it is directly over a tab.
-    local sectionPadX = 8
+    local sectionPadLeft = 12
+    local sectionPadRight = 8
     local sectionPadY = 5
     local sectionX = Geometry.RailX + sectionPadX
     local sectionY = Geometry.RailY + sectionPadY
@@ -1666,9 +1667,9 @@ local function DrawTabRail()
     -- New sidebar motion: the detached navigation layer slides into place
     -- while it expands. The rail geometry itself stays unchanged so hover,
     -- clicking and the content layout remain stable throughout the animation.
-    local sectionX = Geometry.RailX + sectionPadX
+    local sectionX = Geometry.RailX + sectionPadLeft
     local sectionY = Geometry.RailY + 5
-    local sectionW = math.max(40, railW - sectionPadX * 2)
+    local sectionW = math.max(40, railW - sectionPadLeft - sectionPadRight)
     local sectionH = math.max(44, Geometry.RailH - 10)
 
     SolidSurface(sectionX, sectionY, sectionW, sectionH,
@@ -1684,8 +1685,8 @@ local function DrawTabRail()
         if not tab.Hidden then
             -- Give collapsed tabs a little more usable width while keeping
             -- their right edge exactly inside the detached sidebar section.
-            local collapsedPadX = 5
-            local x = sectionX + (padX - (padX - collapsedPadX) * (1 - openAmt))
+            local collapsedPadX = 7
+            local x = sectionX + collapsedPadX
             local y = rowY
 
             -- The tab itself grows continuously with the sidebar animation.
@@ -1697,8 +1698,9 @@ local function DrawTabRail()
             -- the same inner padding on both sides.
             -- Give collapsed tabs a little more horizontal room while keeping
             -- the expanded tabs fully inside the detached sidebar section.
-            local sectionTabW = math.max(1, sectionW - padX * 2)
-            local narrowTabW = math.max(1, sectionW - collapsedPadX)
+            local sectionTabRightPad = 10
+            local sectionTabW = math.max(1, sectionW - padX - sectionTabRightPad)
+            local narrowTabW = sectionTabW
             local wideTabW = sectionTabW
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
