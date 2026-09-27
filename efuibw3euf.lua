@@ -1659,7 +1659,13 @@ end
 local function DrawTabRail()
     local th = State.Theme
     local openAmt = State.RailOpen
-    local railW = Geometry.RailW
+
+    -- Keep the drawing path safe even if the executor invokes this callback
+    -- before derived geometry has been populated.
+    local railX = Geometry.RailX or State.X
+    local railY = Geometry.RailY or (State.Y + Layout.TopbarH)
+    local railW = Geometry.RailW or Layout.TabRailNarrow
+    local railH = Geometry.RailH or math.max(1, State.H - Layout.TopbarH - Geometry.FooterH)
 
     -- The main window remains the background. The navigation is intentionally
     -- detached from it, so there is no full-height solid rail behind this panel.
@@ -1674,10 +1680,10 @@ local function DrawTabRail()
     -- New sidebar motion: the detached navigation layer slides into place
     -- while it expands. The rail geometry itself stays unchanged so hover,
     -- clicking and the content layout remain stable throughout the animation.
-    local sectionX = Geometry.RailX + sectionPadX
-    local sectionY = Geometry.RailY + 5
+    local sectionX = railX + sectionPadX
+    local sectionY = railY + 5
     local sectionW = math.max(40, railW - sectionPadX - sectionPadX)
-    local sectionH = math.max(44, Geometry.RailH - 10)
+    local sectionH = math.max(44, railH - 10)
 
     SolidSurface(sectionX, sectionY, sectionW, sectionH,
                  rgb(16, 19, 28), 36, 12)
