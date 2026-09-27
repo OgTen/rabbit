@@ -1435,37 +1435,21 @@ end
 local function DrawFrame()
     local th = State.Theme
 
-    -- Matcha's Drawing renderer needs the Roblox-style transparency mapping:
-    -- 0 = fully opaque, 1 = fully transparent. Keep the pane itself strong
-    -- and use the scene visibility only as a subtle glass effect.
-    -- There is ONE silhouette; the additional fills are interior glass layers,
-    -- not borders or inset frames.
+    -- Solid window surface. No glass transparency or layered frosted fills.
+    -- The entire UI uses one unified outer silhouette.
     Rect(State.X, State.Y, State.W, State.H,
-         rgb(22, 25, 35), 10, Layout.Corner, 0.88)
-
-    -- Frosted depth: a slightly lighter upper layer and darker lower layer.
-    -- Both share the exact same silhouette so they read as one glass surface.
-    local split = math.floor(State.H * 0.52)
-    Rect(State.X + 1, State.Y + 1, State.W - 2, split,
-         mix(th.Base, th.Panel, 0.45), 11, math.max(1, Layout.Corner - 1), 0.82)
-    Rect(State.X + 1, State.Y + split, State.W - 2, State.H - split - 1,
-         mix(th.Base, Color3.new(0, 0, 0), 0.18), 11, 0, 0.84)
-
-    -- Very restrained acrylic reflection.
-    Rect(State.X + Layout.Corner, State.Y + 1,
-         math.max(1, State.W - Layout.Corner * 2), 1,
-         Color3.new(1, 1, 1), 12, 0, 0.78)
+         rgb(18, 20, 28), 10, Layout.Corner, 1)
 
     -- Internal structure only; no additional square shells.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.68)
+         th.Divider, 14, 1, 0.78)
 
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
          th.Divider, 14, 1, 0.72)
 
-    -- Keep the single animated glass edge on top.
+    -- Keep the single animated outer edge on top.
     DrawGlassBorder(th)
 end
 
