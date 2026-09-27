@@ -1435,35 +1435,31 @@ end
 local function DrawFrame()
     local th = State.Theme
 
-    -- Main window: translucent dark glass.
-    -- Matcha's Drawing wrapper uses alpha here as visible opacity, then maps it
-    -- to the renderer's transparency internally. Keep this surface translucent
-    -- enough for the Roblox scene to remain visible through it.
+    -- One continuous frosted-glass surface. Do not split the pane into
+    -- upper/lower rectangles: Drawing layers cannot blur the game scene,
+    -- so the frosted effect is created by a single translucent dark tint
+    -- plus a very subtle highlight.
     Rect(State.X, State.Y, State.W, State.H,
-         rgb(18, 21, 30), 10, Layout.Corner, 0.62)
+         rgb(18, 21, 30), 10, Layout.Corner, 0.46)
 
-    -- Frosted glass tint. These layers use the exact same silhouette so they
-    -- blend into the main pane instead of creating another frame.
-    local upperH = math.max(1, math.floor(State.H * 0.48))
-    Rect(State.X + 1, State.Y + 1, State.W - 2, upperH,
-         mix(th.Base, th.Panel, 0.55), 11, math.max(1, Layout.Corner - 1), 0.10)
+    -- A second full-surface wash adds depth without creating a visible seam.
+    Rect(State.X, State.Y, State.W, State.H,
+         mix(th.Base, Color3.new(255 / 255, 255 / 255, 255 / 255), 0.035),
+         11, Layout.Corner, 0.08)
 
-    Rect(State.X + 1, State.Y + upperH, State.W - 2, State.H - upperH - 1,
-         mix(th.Base, Color3.new(0, 0, 0), 0.20), 11, 0, 0.07)
-
-    -- Very soft acrylic reflection across the top edge.
+    -- Very subtle acrylic reflection along the top edge.
     Rect(State.X + Layout.Corner, State.Y + 1,
          math.max(1, State.W - Layout.Corner * 2), 1,
-         Color3.new(1, 1, 1), 12, 0, 0.16)
+         Color3.new(1, 1, 1), 12, 0, 0.10)
 
-    -- Internal structure only; no secondary shells or inset borders.
+    -- Internal structure only. No secondary background shells.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.34)
+         th.Divider, 14, 1, 0.24)
 
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
-         th.Divider, 14, 1, 0.30)
+         th.Divider, 14, 1, 0.20)
 
     -- Keep the single animated glass edge on top.
     DrawGlassBorder(th)
