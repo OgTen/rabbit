@@ -1689,33 +1689,31 @@ local function ClearStartupLogo()
     end
 end
 
-local function DrawStartupFrame()
+local function DrawStartupBranding()
     local th = State.Theme
     local x, y, w, h = State.X, State.Y, State.W, State.H
     local accent = th.Accent
     local textColor = th.Text
     local st = State.Startup
 
-    GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
-    DrawGlassBorder(th)
-
     EnsureStartupLogo(st.LogoURL)
+
+    -- Keep the compact startup frame genuinely compact.
+    local logoSize = math.min(56, math.max(48, h * 0.58))
+    local titleSize = math.min(17, math.max(14, h * 0.17))
+    local title = "SHADOW UI"
+    local titleW = TextWidth(title, titleSize, FontBold)
+    local gap = 8
+    local groupW = logoSize + gap + titleW
+    local groupX = x + (w - groupW) / 2
+    local logoY = y + math.max(5, (h - logoSize) / 2 - 5)
 
     local fade = 1
     if st.Phase == "pop" then
-        fade = 1 - math.min(st.Time / 0.14, 1)
+        fade = 1 - math.min(st.Time / 0.20, 1)
+        fade = fade * fade
     end
 
-    local logoSize = math.min(68, math.max(58, h * 0.56))
-    local titleSize = math.min(18, math.max(14, h * 0.15))
-    local title = "SHADOW UI"
-    local titleW = TextWidth(title, titleSize, FontBold)
-    local gap = 9
-    local groupW = logoSize + gap + titleW
-    local groupX = x + (w - groupW) / 2
-    local logoY = y + math.max(7, (h - logoSize) / 2 - 7)
-
-    -- Custom image is optional. If it has not loaded yet, use the normal S mark.
     if st.LogoData and not st.LogoImage then
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
@@ -1723,7 +1721,7 @@ local function DrawStartupFrame()
             obj.Position = Vector2.new(groupX, logoY)
             obj.Size = Vector2.new(logoSize, logoSize)
             obj.Transparency = fade
-            obj.Visible = true
+            obj.Visible = fade > 0.001
             obj.ZIndex = 32
             return obj
         end)
@@ -1743,28 +1741,37 @@ local function DrawStartupFrame()
     else
         Rect(groupX, logoY, logoSize, logoSize, accent, 30, 5, 0.18 * fade)
         Stroke(groupX, logoY, logoSize, logoSize, accent, 31, 5, 0.55 * fade)
-        TextCenter("S", groupX + logoSize / 2, logoY + 12, accent, titleSize + 4, FontBold, 32, fade)
+        TextCenter("S", groupX + logoSize / 2, logoY + 8, accent, titleSize + 3, FontBold, 32, fade)
     end
 
-    -- The title starts beside the image and slides smoothly outward to the right.
-    local slideT = math.min(st.Time / 0.50, 1)
+    -- The title emerges from underneath the image's right edge and slides
+    -- outward, rather than travelling in from empty space on the right.
+    local slideT = math.min(st.Time / 0.48, 1)
     slideT = slideT * slideT * (3 - 2 * slideT)
-    if st.Phase ~= "loading" then
-        slideT = 1
-    end
-    local titleX = groupX + logoSize + gap + (1 - slideT) * 20
+    local titleX = groupX + logoSize - 7 + (gap + 7) * slideT
     Text(title, titleX, logoY + (logoSize - titleSize) / 2 + 1,
          textColor, titleSize, FontBold, 32, fade, titleW + 2, false)
 
-    -- Only the loading bar remains underneath the branding.
-    local barW = math.min(210, math.max(150, w - 46))
+    local barW = math.min(190, math.max(135, w - 38))
     local barH = 4
     local barX = x + (w - barW) / 2
-    local barY = y + h - 17
-    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
+    local barY = y + h - 12
+    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42 * fade)
     if st.Progress > 0 then
-        Rect(barX, barY, math.max(1, barW * st.Progress), barH, accent, 31, 2, 0.95)
+        Rect(barX, barY, math.max(1, barW * st.Progress), barH, accent, 31, 2, 0.95 * fade)
     end
+
+    if fade <= 0.001 and st.LogoImage then
+        pcall(function() st.LogoImage.Visible = false end)
+    end
+end
+
+local function DrawStartupFrame()
+    local th = State.Theme
+    local x, y, w, h = State.X, State.Y, State.W, State.H
+    GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
+    DrawGlassBorder(th)
+    DrawStartupBranding()
 end
 
 local function TickStartup(dt)
@@ -1799,12 +1806,16 @@ local function TickStartup(dt)
             st.Phase = "reveal"
             st.Time = 0
             st.RevealProgress = 0
+            if st.LogoImage then
+                pcall(function() st.LogoImage:Remove() end)
+                st.LogoImage = nil
+            end
         end
         return
     end
 
     if st.Phase == "reveal" then
-        st.Time = st.Time + 0
+        st.Time = st.Time + dt
         local t = math.min(st.Time / st.RevealDuration, 1)
         st.RevealProgress = t * t * (3 - 2 * t)
         if t >= 1 then
@@ -1835,8 +1846,8 @@ local function StartStartup(opts)
     st.TargetW, st.TargetH = State.W, State.H
     st.TargetX, st.TargetY = State.X, State.Y
 
-    st.StartW = math.min(300, math.max(270, st.TargetW * 0.42))
-    st.StartH = math.min(112, math.max(100, st.TargetH * 0.225))
+    st.StartW = math.min(285, math.max(250, st.TargetW * 0.36))
+    st.StartH = math.min(88, math.max(82, st.TargetH * 0.17))
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
@@ -4569,6 +4580,7 @@ local function Render()
         -- Only the actual window shell is drawn while it expands. No sidebar
         -- or tab contents are rendered until the window reaches full size.
         DrawFrame()
+        DrawStartupBranding()
         HideUnused()
         return
     end
@@ -4662,6 +4674,21 @@ end
 -- ============================================================================
 
 local ShadowUI = {}
+
+-- CreateWindow is the public constructor used by showcase/user scripts.
+-- The startup animation is part of the same window, so the supplied logo URL
+-- is automatically used by the loading frame.
+function ShadowUI:CreateWindow(opts)
+    opts = opts or {}
+    if opts.Width then State.W = math.max(Layout.WindowMinW, tonumber(opts.Width) or State.W) end
+    if opts.Height then State.H = math.max(Layout.WindowMinH, tonumber(opts.Height) or State.H) end
+    if opts.MenuKey then State.MenuKey = string.lower(tostring(opts.MenuKey)) end
+    StartStartup({
+        logo = opts.logo or opts.Logo,
+        Duration = opts.StartupDuration or opts.Duration or 2.0,
+    })
+    return self
+end
 
 ShadowUI.Themes         = Themes
 ShadowUI.Layout         = Layout
