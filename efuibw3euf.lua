@@ -1705,7 +1705,7 @@ local function DrawStartupBranding()
 
     -- Fixed compact startup geometry. The logo never participates in sizing
     -- the window, so a loaded image cannot make the loading frame taller.
-    local logoSize = 30
+    local logoSize = 42
     local titleSize = 14
     local title = "SHADOW UI"
     local titleW = TextWidth(title, titleSize, FontBold)
@@ -1714,10 +1714,16 @@ local function DrawStartupBranding()
     local groupX = x + (w - groupW) / 2
     local logoY = y + math.floor((h - logoSize) / 2)
 
-    -- Keep startup branding fully visible for the entire compact frame and
-    -- expansion. The custom image may finish downloading after loading starts,
-    -- so fading it during expansion can make it appear only at the very end.
-    local fade = 1
+    -- Keep the branding visible during loading, then fade it away smoothly
+    -- as the same window begins expanding.
+    local brandingFade = 1
+    if st.Phase == "pop" then
+        brandingFade = 1 - math.min(st.Time / 0.42, 1)
+        brandingFade = brandingFade * brandingFade * (3 - 2 * brandingFade)
+    elseif st.Phase == "reveal" or st.Phase == "done" then
+        brandingFade = 0
+    end
+    local fade = brandingFade
 
     -- The title is drawn FIRST. The image is drawn over its left side so the
     -- title physically appears to emerge from behind the logo's right edge.
@@ -1868,7 +1874,7 @@ local function StartStartup(opts)
     st.TargetX, st.TargetY = State.X, State.Y
 
     st.StartW = 245
-    st.StartH = 48
+    st.StartH = 75
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
