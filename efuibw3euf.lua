@@ -1659,7 +1659,7 @@ local function DrawStartupFrame()
     local titleOffset = (1 - titleEase) * 28
     local titleAlpha = titleEase
     local titleX = x + (w - titleW) / 2 - titleOffset
-    local titleY = y + 18
+    local titleY = TextMidY(y, h, titleSize)
     Text(title,
          titleX,
          titleY,
@@ -1776,8 +1776,6 @@ local TitleButtons = {
 local function DrawTitleBar(title)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
-    local cxLeft = State.X + 14
-
     -- centered window title
     local titleSize = 15
     local titleW = TextWidth(title, titleSize, FontBold)
