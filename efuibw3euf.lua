@@ -1118,14 +1118,7 @@ end
 --  WINDOW GEOMETRY  --  derived every frame from State.X/Y/W/H
 -- ============================================================================
 
-local Geometry = {
-    FooterH = 10,
-    X = 0, Y = 0, W = 0, H = 0,
-    TopY = 0, TopH = 0,
-    RailX = 0, RailY = 0, RailW = 0, RailH = 0,
-    ContentX = 0, ContentY = 0, ContentW = 0, ContentH = 0,
-    InnerX = 0, InnerY = 0, InnerW = 0, InnerH = 0,
-}
+local Geometry = { FooterH = 20 }
 
 function Geometry.Recalculate()
     Geometry.X = State.X
@@ -1141,7 +1134,7 @@ function Geometry.Recalculate()
     Geometry.RailX = State.X
     Geometry.RailY = State.Y + Geometry.TopH
     -- Reserve a compact footer strip at the bottom of the window.
-    Geometry.FooterH = 10
+    Geometry.FooterH = 20
     Geometry.RailH = math.max(1, State.H - Geometry.TopH - Geometry.FooterH)
 
     local wide = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
@@ -1160,10 +1153,6 @@ function Geometry.Recalculate()
     Geometry.InnerW = Geometry.ContentW - Layout.ContentPadX * 2 - Layout.ScrollbarW
     Geometry.InnerH = Geometry.ContentH - Layout.ContentPadY * 2
 end
-
--- Prime derived geometry once so an executor cannot enter the render callback
--- with an entirely uninitialized geometry table.
-Geometry.Recalculate()
 
 -- ============================================================================
 --  TABS  --  structural data
@@ -1721,13 +1710,7 @@ local function DrawTabRail()
         if not tab.Hidden then
             local x = sectionX + padX
             local y = rowY
-
-            -- The tab itself grows with the sidebar animation. There is no
-            -- separate width animation for the tab; it is driven directly by
-            -- the same RailOpen value as the navigation container.
-            local narrowTabW = math.max(1, Layout.TabRailNarrow - padX * 2)
-            local wideTabW = math.max(1, math.max(Layout.TabRailW, math.floor(State.W * 0.22)) - padX * 2)
-            local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
+            local w = math.max(1, sectionW - padX * 2)
 
             local hover = MouseIn(x, y, w, rowH)
             local active = (State.ActiveIndex == i)
@@ -1759,9 +1742,12 @@ local function DrawTabRail()
             -- icon column. When the rail is collapsed there is no label, so
             -- center the icon in the entire tab instead of leaving it offset
             -- toward the old label position.
-            local centeredIconX = x + math.max(0, (narrowTabW - iconSize) / 2)
-            local expandedIconX = x + 11
-            local iconX = centeredIconX + (expandedIconX - centeredIconX) * openAmt
+            local iconX
+            if openAmt < 0.5 then
+                iconX = x + math.max(0, (w - iconSize) / 2)
+            else
+                iconX = x + 11
+            end
             local iconY = y + (rowH - iconSize) / 2
             local iconAlpha = 0.55 + 0.45 * math.max(tab.Glow, tab.Hover)
             local iconColor = tab.Glow > 0.5 and th.Accent or th.TextDim
@@ -1774,7 +1760,7 @@ local function DrawTabRail()
             end
 
             -- label
-            if openAmt > 0.08 then
+            if openAmt > 0.02 then
                 local labelX = x + 36
                 local labelRoom = w - (labelX - x) - 6
                 local labelY = TextMidY(y, rowH, Layout.TextSize)
@@ -4397,18 +4383,18 @@ local function Render()
         return
     end
 
-    -- TickRailOpen uses rail geometry for its hover trigger. Always establish a
-    -- valid baseline first, even on the very first render frame.
+    -- TickRailOpen uses derived rail geometry. Establish a valid baseline
+    -- before any hover/animation math, including on the first render frame.
     Geometry.Recalculate()
 
-    -- animate/state updates first. Recalculate again after these updates so every
-    -- element uses the exact same window position and rail width for this frame.
+    -- Animate/state updates.
     TickRailOpen(State.Delta)
     TickDrag(State.Delta)
     TickResize()
     TickTooltip(State.Delta)
 
-    -- geometry
+    -- Recalculate after state changes so rendering uses the final geometry
+    -- for this frame.
     Geometry.Recalculate()
 
     -- reset drawing pool for this frame
