@@ -2168,7 +2168,7 @@ Register("Toggle", function(parent, opts)
     local self = Base.New("Toggle", parent, opts)
     self.Value   = opts.Default and true or false
     self.Callback = opts.Callback
-    self.Height  = Layout.ToggleH + 10
+    self.Height  = Layout.ToggleH
 
     -- internal animation
     self._knob = self.Value and 1 or 0
@@ -2232,7 +2232,7 @@ Register("Toggle", function(parent, opts)
                  th.TextDim, Layout.SmallSize, FontSystem,
                  51, self.Enabled and 0.6 or 0.25,
                  trackX - x - 10)
-            self.Height = math.max(self.Height, Layout.ToggleH + 22)
+            self.Height = math.max(self.Height, Layout.ToggleH + 12)
         end
     end
 
