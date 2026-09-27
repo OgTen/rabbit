@@ -1492,8 +1492,15 @@ local function DrawFrame()
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
          th.Divider, 14, 1, 0.24)
 
-    Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
-         Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
+    -- Keep the vertical separator exactly one sidebar-section padding unit
+    -- to the right of the detached section, matching the 10px left inset.
+    local sidebarSectionPad = 10
+    local sidebarSectionRight = Geometry.RailX + sidebarSectionPad
+        + math.max(40, Geometry.RailW - sidebarSectionPad - sidebarSectionPad)
+    local separatorX = sidebarSectionRight + sidebarSectionPad
+
+    Line(separatorX, Geometry.RailY + 1,
+         separatorX, State.Y + State.H - 2,
          th.Divider, 14, 1, 0.20)
 
     -- Footer is part of the same glass surface as the main window.
@@ -1713,7 +1720,7 @@ local function DrawTabRail()
             -- the expanded tabs fully inside the detached sidebar section.
             local sectionTabRightPad = 14
             local sectionTabW = math.max(1, sectionW - padX - sectionTabRightPad)
-            local narrowTabW = sectionTabW
+            local narrowTabW = math.max(1, sectionTabW * 1.30)
             local wideTabW = sectionTabW
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
