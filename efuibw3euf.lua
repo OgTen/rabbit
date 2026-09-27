@@ -265,6 +265,27 @@ end
 
 local FrameAlpha = 1  -- global fade multiplier used during open/close
 
+-- Dedicated surface renderer for the main glass pane. This deliberately does
+-- not share the normal Rect() alpha value, so changing the glass strength
+-- cannot alter buttons, sliders, overlays, text, or other controls.
+local GlassSurfaceAlpha = 0.28
+
+local function GlassSurface(x, y, w, h, color, z, corner)
+    if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
+    local o, l = Take("Square")
+    local depth = Layer(z)
+
+    if l.X ~= x or l.Y ~= y then l.X, l.Y = x, y; o.Position = Vector2.new(x, y) end
+    if l.W ~= w or l.H ~= h then l.W, l.H = w, h; o.Size = Vector2.new(w, h) end
+    if l.Color ~= color then l.Color = color; o.Color = color end
+    if not l.Filled then l.Filled = true; o.Filled = true end
+    if l.Corner ~= corner then l.Corner = corner; o.Corner = corner end
+    if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
+
+    local a = GlassSurfaceAlpha * FrameAlpha
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+end
+
 local function Rect(x, y, w, h, color, z, corner, alpha)
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
     local o, l = Take("Square")
@@ -1435,11 +1456,10 @@ end
 local function DrawFrame()
     local th = State.Theme
 
-    -- One continuous translucent glass pane. The existing Matcha transparency
-    -- convention is preserved for every primitive, so text and controls keep
-    -- their original visibility. Only the main pane is given the glass tint.
-    Rect(State.X, State.Y, State.W, State.H,
-         rgb(18, 21, 30), 10, Layout.Corner, 1)
+    -- One continuous translucent glass pane. It uses its own alpha path so
+    -- the rest of the UI keeps the exact same transparency behaviour.
+    GlassSurface(State.X, State.Y, State.W, State.H,
+                 rgb(18, 21, 30), 10, Layout.Corner)
 
     -- A restrained top reflection. This follows the same outer silhouette and
     -- does not create a second panel or a horizontal split.
