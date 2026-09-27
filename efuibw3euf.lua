@@ -1662,14 +1662,14 @@ local function DrawTabRail()
     -- Detached navigation container: no full-height sidebar fill.
     -- Keep a clear gap from the main window edge so the navigation reads as
     -- its own floating section. It is slightly larger than the previous build.
-    local sectionPadX = 8
+    local sectionPadX = 10
 
     -- New sidebar motion: the detached navigation layer slides into place
     -- while it expands. The rail geometry itself stays unchanged so hover,
     -- clicking and the content layout remain stable throughout the animation.
-    local sectionX = Geometry.RailX + sectionPadLeft
+    local sectionX = Geometry.RailX + sectionPadX
     local sectionY = Geometry.RailY + 5
-    local sectionW = math.max(40, railW - sectionPadLeft - sectionPadRight)
+    local sectionW = math.max(40, railW - sectionPadX - sectionPadX)
     local sectionH = math.max(44, Geometry.RailH - 10)
 
     SolidSurface(sectionX, sectionY, sectionW, sectionH,
@@ -1698,7 +1698,7 @@ local function DrawTabRail()
             -- the same inner padding on both sides.
             -- Give collapsed tabs a little more horizontal room while keeping
             -- the expanded tabs fully inside the detached sidebar section.
-            local sectionTabRightPad = 10
+            local sectionTabRightPad = 14
             local sectionTabW = math.max(1, sectionW - padX - sectionTabRightPad)
             local narrowTabW = sectionTabW
             local wideTabW = sectionTabW
