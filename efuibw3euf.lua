@@ -1072,9 +1072,8 @@ local State = {
     X = 100, Y = 100,
     W = Layout.WindowW,
     H = Layout.WindowH,
-    Visible = 0,          -- 0..1 animation; hidden until CreateWindow starts startup
-    Open = false,
-    Initialized = false,
+    Visible = 1,          -- 0..1 animation
+    Open = true,
 
     -- drag / resize
     Drag        = nil,    -- { GrabX, GrabY }
@@ -1651,10 +1650,7 @@ end
 
 local function EnsureStartupLogo(url)
     local st = State.Startup
-    if not url or url == "" then
-        return
-    end
-
+    if not url or url == "" then return end
     if st.LogoURL == url and (st.LogoLoading or st.LogoData or st.LogoFailed) then
         return
     end
@@ -1666,6 +1662,9 @@ local function EnsureStartupLogo(url)
 
     task.spawn(function()
         local ok, data = pcall(function()
+            if type(httpget) == "function" then
+                return httpget(url)
+            end
             return game:HttpGet(url)
         end)
 
@@ -1673,14 +1672,11 @@ local function EnsureStartupLogo(url)
             return
         end
 
-        if ok and type(data) == "string" and #data > 100 then
+        if ok and type(data) == "string" and #data > 0 then
             State.Startup.LogoData = data
-            print("[ShadowUI] Logo downloaded:", #data, "bytes")
         else
             State.Startup.LogoFailed = true
-            print("[ShadowUI] Logo download failed")
         end
-
         State.Startup.LogoLoading = false
     end)
 end
@@ -1695,119 +1691,103 @@ end
 
 local function DrawStartupBranding()
     local th = State.Theme
-    local st = State.Startup
-    local x, y, w, h
-    if st.Phase == "loading" then
-        x, y, w, h = st.StartX, st.StartY, st.StartW, st.StartH
-    else
-        x, y, w, h = State.X, State.Y, State.W, State.H
-    end
+    local x, y, w, h = State.X, State.Y, State.W, State.H
     local accent = th.Accent
     local textColor = th.Text
+    local st = State.Startup
+
     EnsureStartupLogo(st.LogoURL)
 
-    -- Fixed compact startup geometry. The logo never participates in sizing
-    -- the window, so a loaded image cannot make the loading frame taller.
-    local logoSize = 42
-    local titleSize = 14
+    -- Keep the compact startup frame genuinely compact.
+    local logoSize = math.min(56, math.max(48, h * 0.58))
+    local titleSize = math.min(17, math.max(14, h * 0.17))
     local title = "SHADOW UI"
     local titleW = TextWidth(title, titleSize, FontBold)
     local gap = 8
     local groupW = logoSize + gap + titleW
     local groupX = x + (w - groupW) / 2
-    local logoY = y + math.floor((h - logoSize) / 2)
+    local logoY = y + math.max(5, (h - logoSize) / 2 - 5)
 
-    -- Keep the branding visible during loading, then fade it away smoothly
-    -- as the same window begins expanding.
-    -- Library alpha values are passed directly to Drawing.Transparency.
-    -- 0 = hidden and 1 = fully visible in the existing Shadow UI renderer.
-    -- Keep branding fully visible while loading, then fade it to zero as the
-    -- same frame starts expanding.
-    local brandingFade = 1
+    local fade = 1
     if st.Phase == "pop" then
-        local t = math.min(st.Time / 0.42, 1)
-        brandingFade = 1 - t
-        brandingFade = brandingFade * brandingFade * (3 - 2 * brandingFade)
-    elseif st.Phase == "reveal" or st.Phase == "done" then
-        brandingFade = 0
+        fade = 1 - math.min(st.Time / 0.20, 1)
+        fade = fade * fade
     end
-    local fade = brandingFade
-
-    -- The title is drawn FIRST. The image is drawn over its left side so the
-    -- title physically appears to emerge from behind the logo's right edge.
-    local slideT = math.min(st.Time / 0.55, 1)
-    if st.Phase ~= "loading" then
-        slideT = 1
-    end
-    slideT = slideT * slideT * (3 - 2 * slideT)
-
-    local hiddenTitleX = groupX + logoSize - titleW + 2
-    local finalTitleX = groupX + logoSize + gap
-    local titleX = hiddenTitleX + (finalTitleX - hiddenTitleX) * slideT
-    Text(title, titleX, logoY + (logoSize - titleSize) / 2 + 1,
-         textColor, titleSize, FontBold, 32, fade, titleW + 2, false)
 
     if st.LogoData and not st.LogoImage then
+        local data = st.LogoData
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
-    
-            obj.Data = st.LogoData
             obj.Position = Vector2.new(groupX, logoY)
-            obj.Size = Vector2.new(42, 42)
+            obj.Size = Vector2.new(logoSize, logoSize)
             obj.Rounding = 5
-            obj.ZIndex = 60
+            -- Layer() maps logical z values into very large ZIndex values.
+            -- A raw ZIndex such as 32/60 would put the image underneath the
+            -- startup glass and make it look dark or completely hidden.
+            obj.ZIndex = 6000000
             obj.Transparency = 0
             obj.Visible = true
-    
+            -- Matcha can create the Image object successfully but fail to
+            -- display data when Data is assigned during object construction.
+            -- Assign the already-downloaded bytes after the object is live.
+            task.defer(function()
+                if not State.Alive or State.Startup.LogoImage ~= obj then
+                    return
+                end
+                pcall(function()
+                    obj.Data = data
+                end)
+            end)
             return obj
         end)
-    
         if ok and image then
             st.LogoImage = image
             st.LogoData = nil
-            print("[ShadowUI] Logo image created successfully")
         else
-            print("[ShadowUI] Drawing.Image creation failed")
+            st.LogoFailed = true
         end
     end
 
     if st.LogoImage then
         st.LogoImage.Position = Vector2.new(groupX, logoY)
         st.LogoImage.Size = Vector2.new(logoSize, logoSize)
-        -- Matcha Drawing transparency: 0 = opaque, 1 = invisible.
-        -- Keep the logo visible until the full window is ready.
+        st.LogoImage.ZIndex = 6000000
         st.LogoImage.Transparency = 1 - fade
         st.LogoImage.Visible = fade > 0.001
+    
     else
-        Rect(groupX, logoY, logoSize, logoSize, accent, 34, 5, 0.18 * fade)
-        Stroke(groupX, logoY, logoSize, logoSize, accent, 35, 5, 0.55 * fade)
-        TextCenter("S", groupX + logoSize / 2, logoY + 6,
-                   accent, titleSize + 2, FontBold, 36, fade)
+        Rect(groupX, logoY, logoSize, logoSize, accent, 30, 5, 0.18 * fade)
+        Stroke(groupX, logoY, logoSize, logoSize, accent, 31, 5, 0.55 * fade)
+        TextCenter("S", groupX + logoSize / 2, logoY + 8, accent, titleSize + 3, FontBold, 32, fade)
     end
 
-    local barW = math.min(155, math.max(110, w - 30))
-    local barH = 2
+    -- The title emerges from underneath the image's right edge and slides
+    -- outward, rather than travelling in from empty space on the right.
+    local slideT = math.min(st.Time / 0.48, 1)
+    slideT = slideT * slideT * (3 - 2 * slideT)
+    local titleX = groupX + logoSize - 7 + (gap + 7) * slideT
+    Text(title, titleX, logoY + (logoSize - titleSize) / 2 + 1,
+         textColor, titleSize, FontBold, 32, fade, titleW + 2, false)
+
+    local barW = math.min(190, math.max(135, w - 38))
+    local barH = 4
     local barX = x + (w - barW) / 2
-    local barY = y + h - 5
+    local barY = y + h - 12
     Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42 * fade)
     if st.Progress > 0 then
-        Rect(barX, barY, math.max(1, barW * st.Progress), barH,
-             accent, 31, 2, 0.95 * fade)
+        Rect(barX, barY, math.max(1, barW * st.Progress), barH, accent, 31, 2, 0.95 * fade)
     end
 
+    if fade <= 0.001 and st.LogoImage then
+        pcall(function() st.LogoImage.Visible = false end)
+    end
 end
 
 local function DrawStartupFrame()
     local th = State.Theme
-    local st = State.Startup
-    local x, y, w, h = st.StartX, st.StartY, st.StartW, st.StartH
+    local x, y, w, h = State.X, State.Y, State.W, State.H
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
-    -- During the loading phase, use the fixed startup geometry for the border
-    -- as well. This prevents any target/window height from affecting the frame.
-    local oldX, oldY, oldW, oldH = State.X, State.Y, State.W, State.H
-    State.X, State.Y, State.W, State.H = x, y, w, h
     DrawGlassBorder(th)
-    State.X, State.Y, State.W, State.H = oldX, oldY, oldW, oldH
     DrawStartupBranding()
 end
 
@@ -1883,8 +1863,8 @@ local function StartStartup(opts)
     st.TargetW, st.TargetH = State.W, State.H
     st.TargetX, st.TargetY = State.X, State.Y
 
-    st.StartW = 245
-    st.StartH = 75
+    st.StartW = math.min(285, math.max(250, st.TargetW * 0.36))
+    st.StartH = math.min(88, math.max(82, st.TargetH * 0.17))
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
@@ -4559,12 +4539,6 @@ end
 local LastHotkeyState = false
 
 local function Render()
-    -- Do absolutely nothing until CreateWindow initializes the UI. This
-    -- prevents the default full-size window from ever flashing on first load.
-    if not State.Initialized then
-        return
-    end
-
     -- The window starts fully visible. Open/close fading only changes this
     -- value after an actual visibility toggle; it must never inherit a stale
     -- fade state from a previous render.
@@ -4726,16 +4700,9 @@ function ShadowUI:CreateWindow(opts)
     if opts.Width then State.W = math.max(Layout.WindowMinW, tonumber(opts.Width) or State.W) end
     if opts.Height then State.H = math.max(Layout.WindowMinH, tonumber(opts.Height) or State.H) end
     if opts.MenuKey then State.MenuKey = string.lower(tostring(opts.MenuKey)) end
-    State.Initialized = true
     StartStartup({
         logo = opts.logo or opts.Logo,
         Duration = opts.StartupDuration or opts.Duration or 2.0,
-    })
-    self:Notify({
-        Title   = "Shadow UI loaded",
-        Content = "Press " .. string.upper(State.MenuKey) .. " to toggle",
-        Type    = "info",
-        Duration = 4,
     })
     return self
 end
