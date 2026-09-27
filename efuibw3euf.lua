@@ -1625,23 +1625,22 @@ local function DrawTabRail()
     local openAmt = State.RailOpen
     local railW = Geometry.RailW
 
-    -- Solid sidebar surface. This is the full navigation background.
-    SolidSurface(Geometry.RailX, Geometry.RailY, Geometry.RailW, Geometry.RailH,
-                 rgb(10, 13, 20), 35, 0)
+    -- The main window remains the background. The navigation is intentionally
+    -- detached from it, so there is no full-height solid rail behind this panel.
 
     -- The tabs now live inside their own detached rounded section. The section
     -- is inset from the sidebar edges so the navigation reads as its own layer.
-    local sectionPad = math.min(12, math.max(6, (railW - 40) / 2))
-    local sectionX = Geometry.RailX + sectionPad
-    local sectionY = Geometry.RailY + 10
-    local sectionW = math.max(32, railW - sectionPad * 2)
-    local sectionH = math.max(40, Geometry.RailH - 20)
+    local sectionPadX = math.min(10, math.max(5, (railW - 44) / 2))
+    local sectionX = Geometry.RailX + sectionPadX
+    local sectionY = Geometry.RailY + 7
+    local sectionW = math.max(36, railW - sectionPadX * 2)
+    local sectionH = math.max(40, Geometry.RailH - 14)
 
     SolidSurface(sectionX, sectionY, sectionW, sectionH,
                  rgb(16, 19, 28), 36, 11)
 
-    local rowY = sectionY + 9
-    local padX = 7
+    local rowY = sectionY + 10
+    local padX = 8
     local rowH = Layout.TabRowH
     local tabGap = Layout.TabGap
     local iconSize = Layout.TabIcon
@@ -1720,17 +1719,6 @@ local function DrawTabRail()
         end
     end
 
-    -- bottom of rail: version / watermark
-    if openAmt > 0.1 then
-        local bottomY = Geometry.RailY + Geometry.RailH - 20
-        local text = "SHADOW UI v1.0"
-        local w = TextWidth(text, Layout.TinySize, FontSystem)
-        Text(text,
-             Geometry.RailX + (Geometry.RailW - w) / 2,
-             bottomY,
-             th.TextMuted, Layout.TinySize, FontSystem,
-             46, openAmt * 0.55)
-    end
 end
 
 -- ============================================================================
