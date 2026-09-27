@@ -1496,12 +1496,10 @@ local function DrawFrame()
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
          th.Divider, 14, 1, 0.20)
 
-    -- Compact footer strip. It is part of the same outer glass shell rather
-    -- than another window/frame, and only occupies the bottom 20 pixels.
-    local footerY = State.Y + State.H - 20
-    GlassSurface(State.X + Layout.Corner, footerY,
-                 math.max(1, State.W - Layout.Corner * 2), 19,
-                 rgb(18, 21, 30), 15, 0)
+    -- Footer is part of the same glass surface as the main window.
+    -- Do not draw another surface here; the pane underneath already provides
+    -- the exact same background. Only the subtle separator is drawn.
+    local footerY = State.Y + State.H - Geometry.FooterH
     Line(State.X + Layout.Corner, footerY,
          State.X + State.W - Layout.Corner, footerY,
          th.Divider, 16, 1, 0.20)
@@ -1622,12 +1620,20 @@ end
 -- ============================================================================
 
 local function TickRailOpen(dt)
-    local inRail = MouseIn(Geometry.RailX, Geometry.RailY,
-                           Geometry.RailW, Geometry.RailH)
+    -- Use the full expanded sidebar as the hover zone instead of the current
+    -- animated width. This prevents the cursor from falling outside the rail
+    -- while it is expanding, which was causing the open/close animation to
+    -- fight itself and look rough.
+    local hoverW = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
+    local inRail = MouseIn(State.X, Geometry.RailY,
+                           hoverW, Geometry.RailH)
 
     local target = (State.RailPinned or inRail) and 1 or 0
-    State.RailOpen = Approach(State.RailOpen, target, 9, dt)
-    if math.abs(State.RailOpen - target) < 0.002 then
+
+    -- Slightly slower exponential approach gives the rail a softer, more
+    -- deliberate ease without introducing a second animation system.
+    State.RailOpen = Approach(State.RailOpen, target, 7, dt)
+    if math.abs(State.RailOpen - target) < 0.001 then
         State.RailOpen = target
     end
 end
