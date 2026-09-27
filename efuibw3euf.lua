@@ -268,7 +268,7 @@ local FrameAlpha = 1  -- global fade multiplier used during open/close
 -- Dedicated surface renderer for the main glass pane. This deliberately does
 -- not share the normal Rect() alpha value, so changing the glass strength
 -- cannot alter buttons, sliders, overlays, text, or other controls.
-local GlassSurfaceAlpha = 0.28
+local GlassSurfaceAlpha = 0.85
 
 local function GlassSurface(x, y, w, h, color, z, corner)
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
