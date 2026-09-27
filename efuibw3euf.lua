@@ -55,19 +55,19 @@ end
 local Themes = {
     {
         Name        = "Midnight",
-        Base        = rgb(12, 13, 20),      -- window background
-        Panel       = rgb(18, 20, 30),      -- control card background
-        PanelHi     = rgb(24, 27, 40),      -- hover/active panel
-        Stroke      = rgb(38, 42, 60),      -- panel borders
-        Divider     = rgb(28, 31, 46),
+        Base        = rgb(18, 20, 29),      -- window background
+        Panel       = rgb(26, 29, 42),      -- control card background
+        PanelHi     = rgb(34, 38, 54),      -- hover/active panel
+        Stroke      = rgb(52, 57, 78),      -- panel borders
+        Divider     = rgb(40, 44, 62),
         Text        = rgb(232, 234, 245),
-        TextDim     = rgb(150, 155, 175),
-        TextMuted   = rgb(96, 100, 122),
+        TextDim     = rgb(170, 175, 194),
+        TextMuted   = rgb(118, 123, 145),
         AccentA     = rgb(120, 140, 255),
         AccentB     = rgb(180, 130, 255),
         Accent      = rgb(150, 135, 255),
         AccentDim   = rgb(96, 90, 180),
-        Track       = rgb(34, 38, 54),
+        Track       = rgb(45, 49, 68),
         TrackFill   = rgb(120, 140, 255),
         Danger      = rgb(255, 96, 120),
         Warning     = rgb(255, 190, 90),
@@ -75,19 +75,19 @@ local Themes = {
     },
     {
         Name        = "Obsidian",
-        Base        = rgb(9, 9, 12),
-        Panel       = rgb(15, 15, 20),
-        PanelHi     = rgb(22, 22, 30),
-        Stroke      = rgb(34, 34, 46),
-        Divider     = rgb(24, 24, 34),
+        Base        = rgb(17, 18, 23),
+        Panel       = rgb(24, 25, 31),
+        PanelHi     = rgb(33, 35, 43),
+        Stroke      = rgb(48, 50, 63),
+        Divider     = rgb(37, 39, 50),
         Text        = rgb(228, 228, 235),
-        TextDim     = rgb(148, 148, 162),
-        TextMuted   = rgb(90, 90, 105),
+        TextDim     = rgb(169, 170, 185),
+        TextMuted   = rgb(116, 117, 133),
         AccentA     = rgb(120, 220, 210),
         AccentB     = rgb(90, 180, 240),
         Accent      = rgb(105, 200, 225),
         AccentDim   = rgb(70, 130, 160),
-        Track       = rgb(30, 30, 42),
+        Track       = rgb(42, 43, 55),
         TrackFill   = rgb(120, 220, 210),
         Danger      = rgb(255, 90, 110),
         Warning     = rgb(255, 180, 80),
@@ -95,11 +95,11 @@ local Themes = {
     },
     {
         Name        = "Burgundy",
-        Base        = rgb(20, 12, 16),
-        Panel       = rgb(28, 17, 22),
-        PanelHi     = rgb(38, 23, 30),
-        Stroke      = rgb(58, 34, 44),
-        Divider     = rgb(42, 26, 34),
+        Base        = rgb(28, 17, 22),
+        Panel       = rgb(38, 23, 30),
+        PanelHi     = rgb(49, 29, 38),
+        Stroke      = rgb(72, 43, 54),
+        Divider     = rgb(53, 32, 42),
         Text        = rgb(245, 232, 235),
         TextDim     = rgb(180, 150, 160),
         TextMuted   = rgb(120, 90, 100),
@@ -121,43 +121,43 @@ local Themes = {
 
 local Layout = {
     -- window
-    WindowW         = 640,
-    WindowH         = 460,
-    WindowMinW      = 420,
-    WindowMinH      = 300,
-    Corner          = 10,
-    TopbarH         = 40,
-    TabRailW        = 148,
+    WindowW         = 700,
+    WindowH         = 500,
+    WindowMinW      = 500,
+    WindowMinH      = 340,
+    Corner          = 12,
+    TopbarH         = 44,
+    TabRailW        = 172,
     TabRailMinW     = 52,
     TabRailNarrow   = 52,
 
     -- tab / section
-    TabRowH         = 30,
+    TabRowH         = 34,
     TabIcon         = 16,
     SectionH        = 22,
     SectionGap      = 8,
 
     -- content
-    ContentPadX     = 14,
-    ContentPadY     = 12,
-    ContentGapY     = 8,
+    ContentPadX     = 18,
+    ContentPadY     = 14,
+    ContentGapY     = 10,
 
     -- row / column
-    RowHeight       = 26,
+    RowHeight       = 28,
     RowColumnGap    = 8,
-    RowGapY         = 6,
+    RowGapY         = 7,
 
     -- controls
-    ToggleW         = 36,
-    ToggleH         = 18,
+    ToggleW         = 38,
+    ToggleH         = 20,
     ToggleKnob      = 14,
 
     SliderH         = 6,
     SliderKnob      = 6,
 
-    ButtonH         = 26,
-    FieldH          = 24,
-    DropdownH       = 26,
+    ButtonH         = 28,
+    FieldH          = 26,
+    DropdownH       = 28,
     DividerH        = 1,
 
     -- font sizes
@@ -1336,14 +1336,14 @@ local function DrawFrame()
 
     -- soft shadow
     if not State.NoAnim then
-        local shadowSteps = 5
+        local shadowSteps = 3
         for i = shadowSteps, 1, -1 do
-            local pad = i * 3
-            Rect(State.X - pad, State.Y - pad + 4,
+            local pad = i * 2
+            Rect(State.X - pad, State.Y - pad + 2,
                  State.W + pad * 2, State.H + pad * 2,
                  Color3.new(0, 0, 0), 5,
                  Layout.Corner + i,
-                 0.04 / i)
+                 0.022 / i)
         end
     end
 
@@ -1359,31 +1359,31 @@ local function DrawFrame()
 
     -- subtle border
     Stroke(State.X, State.Y, State.W, State.H,
-           th.Stroke, 11, Layout.Corner, 0.4)
+           th.Stroke, 11, Layout.Corner, 0.72)
 
     -- top bar
     Rect(State.X, State.Y, State.W, Layout.TopbarH,
-         th.Panel, 12, Layout.Corner, 0.85)
+         th.Panel, 12, Layout.Corner, 0.98)
 
     -- bottom of topbar divider
     Line(State.X + 6, State.Y + Layout.TopbarH,
          State.X + State.W - 6, State.Y + Layout.TopbarH,
-         th.Divider, 13, 1, 0.9)
+         th.Divider, 13, 1, 0.95)
 
     -- rail background
     Rect(Geometry.RailX, Geometry.RailY,
          Geometry.RailW, Geometry.RailH,
-         th.Panel, 13, 0, 0.55)
+         th.Panel, 13, 0, 0.98)
 
     -- rail right divider
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY,
          Geometry.RailX + Geometry.RailW, Geometry.RailY + Geometry.RailH,
-         th.Divider, 14, 1, 0.7)
+         th.Divider, 14, 1, 0.85)
 
     -- content background
     Rect(Geometry.ContentX, Geometry.ContentY,
          Geometry.ContentW, Geometry.ContentH,
-         th.Base, 14, 0, 0.0)
+         th.Base, 14, 0, 0.96)
 end
 
 -- ============================================================================
@@ -1538,21 +1538,20 @@ local function DrawTabRail()
                 tab.Hover = hover and 1 or 0
             end
 
-            -- background pill (active / hover)
-            local bgAlpha = tab.Glow * 0.12 + (1 - tab.Glow) * tab.Hover * 0.08
-            if bgAlpha > 0.005 then
-                Rect(x, y, w, rowH, th.Accent, 40, 6, bgAlpha)
-            end
+            -- soft neutral tab surface; the accent is used only as a state indicator.
+            local bgColor = mix(th.Panel, th.PanelHi, tab.Hover * 0.7 + tab.Glow * 0.3)
+            local bgAlpha = 0.35 + 0.25 * tab.Hover + 0.12 * tab.Glow
+            Rect(x, y, w, rowH, bgColor, 40, 7, bgAlpha)
 
-            -- active accent bar on left
+            -- slim active indicator, kept outside the icon/text area.
             if tab.Glow > 0.01 then
-                Rect(Geometry.RailX + 2, y + rowH * 0.2,
-                     2, rowH * 0.6,
-                     th.Accent, 42, 1, tab.Glow * 0.9)
+                Rect(Geometry.RailX + 3, y + 6,
+                     2, rowH - 12,
+                     th.Accent, 42, 1, tab.Glow * 0.95)
             end
 
             -- icon column
-            local iconX = x + 10
+            local iconX = x + 11
             local iconY = y + (rowH - iconSize) / 2
             local iconAlpha = 0.55 + 0.45 * math.max(tab.Glow, tab.Hover)
             local iconColor = tab.Glow > 0.5 and th.Accent or th.TextDim
@@ -1566,13 +1565,13 @@ local function DrawTabRail()
 
             -- label
             if openAmt > 0.02 then
-                local labelX = x + 34
+                local labelX = x + 36
                 local labelRoom = w - (labelX - x) - 6
                 local labelY = TextMidY(y, rowH, Layout.TextSize)
                 local labelColor = th.Text
                 local labelAlpha = openAmt * (0.7 + 0.3 * math.max(tab.Glow, tab.Hover))
                 if tab.Glow > 0.5 then
-                    labelColor = th.Accent
+                    labelColor = th.Text
                     labelAlpha = openAmt
                 end
                 Text(tab.Name, labelX, labelY,
@@ -3862,7 +3861,7 @@ local function DrawContent()
     local titleY = Geometry.ContentY + 6
     local title = tab.Name
     Text(title, Geometry.ContentX + Layout.ContentPadX, titleY,
-         State.Theme.Text, 15, FontBold, 60, 0.95,
+         State.Theme.Text, 16, FontBold, 60, 0.98,
          Geometry.ContentW - Layout.ContentPadX * 2)
 
     -- subtitle (optional)
