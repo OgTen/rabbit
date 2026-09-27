@@ -2171,7 +2171,7 @@ Register("Toggle", function(parent, opts)
     local self = Base.New("Toggle", parent, opts)
     self.Value   = opts.Default and true or false
     self.Callback = opts.Callback
-    self.Height  = Layout.ToggleH + 10
+    self.Height  = Layout.ToggleH
 
     -- internal animation
     self._knob = self.Value and 1 or 0
