@@ -1572,32 +1572,35 @@ local function DrawGlassBorder(th)
         return
     end
 
-    -- A colored snake travels around the white border. The trail is made
-    -- from progressively smaller/fainter points so the movement is obvious.
+    -- A single colored snake head travels around the white border.
+    -- Its trail is one continuous tapered line rather than a row of dots.
     local straightW = math.max(0, w - radius * 2)
     local straightH = math.max(0, h - radius * 2)
     local perimeter = 2 * straightW + 2 * straightH + 2 * math.pi * radius
     local distance = (os.clock() * 92) % perimeter
     local trail = mix(th.AccentA, th.AccentB, 0.5)
 
-    local trailPoints = {
-        { offset = -30, size = 1.4, alpha = 0.12 },
-        { offset = -24, size = 1.7, alpha = 0.18 },
-        { offset = -18, size = 2.0, alpha = 0.26 },
-        { offset = -12, size = 2.4, alpha = 0.38 },
-        { offset = -7,  size = 2.8, alpha = 0.52 },
-        { offset = -3,  size = 3.2, alpha = 0.68 },
-    }
+    local trailLength = 42
+    local trailSegments = 12
+    local previousX, previousY = GlassBorderPoint(distance, x, y, w, h, radius)
 
-    for i, point in ipairs(trailPoints) do
-        local px, py = GlassBorderPoint(distance + point.offset,
-                                        x, y, w, h, radius)
-        Circle(px, py, point.size, trail, 20 + i, true, 1, 16, point.alpha)
+    for i = 1, trailSegments do
+        local progress = i / trailSegments
+        local offset = -trailLength * progress
+        local px, py = GlassBorderPoint(distance + offset,
+                                         x, y, w, h, radius)
+        local alpha = 0.62 * (1 - progress) ^ 1.35
+        local thickness = 3.0 * (1 - progress) ^ 0.65
+
+        Line(previousX, previousY, px, py, trail, 20 + i,
+             math.max(0.65, thickness), alpha)
+
+        previousX, previousY = px, py
     end
 
     local headX, headY = GlassBorderPoint(distance, x, y, w, h, radius)
-    Circle(headX, headY, 3.8, trail, 28, true, 1, 16, 0.95)
-    Circle(headX, headY, 1.8, Color3.new(1, 1, 1), 29, true, 1, 12, 1)
+    Circle(headX, headY, 3.9, trail, 34, true, 1, 16, 0.98)
+    Circle(headX, headY, 1.7, Color3.new(1, 1, 1), 35, true, 1, 12, 1)
 end
 
 local function DrawFrame()
