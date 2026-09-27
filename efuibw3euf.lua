@@ -1318,25 +1318,36 @@ local function GetRequiredWindowHeight()
         return Layout.WindowMinH
     end
 
-    -- DrawTabRail uses the collapsed tab scale while the sidebar is closed.
-    -- Measure the navigation using that actual rendered height rather than
-    -- the base TabRowH, so the final tab and its bottom spacing remain inside
-    -- the detached sidebar section.
+    -- Match DrawTabRail() exactly. Tabs are positioned from rowY using the
+    -- base TabRowH plus TabGap; the collapsed scale changes each tab's drawn
+    -- height and its centering offset, but does not change the row-to-row step.
     local sectionTopPad = 5
-    local sectionBottomPad = 5
     local tabTopPad = 11
-    local tabBottomPad = 11
+    local tabBottomPad = 10
     local collapsedScale = 1.18
-    local renderedTabH = Layout.TabRowH * collapsedScale
-    local renderedGaps = math.max(0, count - 1) * Layout.TabGap
 
-    local railHeight = sectionTopPad
+    local rowH = Layout.TabRowH
+    local tabGap = Layout.TabGap
+    local lastRowOffset = (rowH - (rowH * collapsedScale)) * 0.5
+    local lastTabH = rowH * collapsedScale
+
+    -- sectionY = railY + sectionTopPad
+    -- rowY     = sectionY + tabTopPad
+    -- last tab uses (count - 1) row steps.
+    local lastTabBottomFromRailY =
+        sectionTopPad
         + tabTopPad
-        + (count * renderedTabH)
-        + renderedGaps
+        + ((count - 1) * (rowH + tabGap))
+        + lastRowOffset
+        + lastTabH
+
+    -- DrawTabRail's section bottom is railY + railH - 5.
+    -- Keep tabBottomPad between the last tab and that section bottom.
+    local railBottomPadding = 5
+    local railHeight =
+        lastTabBottomFromRailY
         + tabBottomPad
-        + sectionBottomPad
-        + 4
+        + railBottomPadding
 
     local required = Layout.TopbarH + Geometry.FooterH + railHeight
 
