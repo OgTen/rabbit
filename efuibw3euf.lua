@@ -1661,7 +1661,7 @@ local function DrawStartupFrame()
 
     local startupFade = 1
     if State.Startup.Phase == "pop" then
-        local fadeT = math.min(State.Startup.Time / 0.10, 1)
+        local fadeT = math.min(State.Startup.Time / 0.18, 1)
         startupFade = 1 - fadeT
     end
 
@@ -1702,14 +1702,12 @@ local function TickStartup(dt)
     end
 
     if st.Phase == "pop" then
-        -- Seamlessly expand from the exact loading-frame size to the final window.
-        -- No jump/scale snap at the start of the transition.
-        local t = math.min(st.Time / 1.35, 1)
+        -- Expand continuously from the exact compact loading frame.
+        local t = math.min(st.Time / 1.60, 1)
         local eased = StartupEase(t)
-        local scale = eased
 
-        State.W = st.StartW + (st.TargetW - st.StartW) * scale
-        State.H = st.StartH + (st.TargetH - st.StartH) * scale
+        State.W = st.StartW + (st.TargetW - st.StartW) * eased
+        State.H = st.StartH + (st.TargetH - st.StartH) * eased
         State.X = st.TargetX + (st.TargetW - State.W) / 2
         State.Y = st.TargetY + (st.TargetH - State.H) / 2
 
@@ -1736,8 +1734,8 @@ local function StartStartup(opts)
     st.TargetW, st.TargetH = State.W, State.H
     st.TargetX, st.TargetY = State.X, State.Y
 
-    st.StartW = math.min(390, math.max(340, st.TargetW * 0.56))
-    st.StartH = math.min(150, math.max(140, st.TargetH * 0.30))
+    st.StartW = math.min(300, math.max(270, st.TargetW * 0.42))
+    st.StartH = math.min(112, math.max(100, st.TargetH * 0.225))
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
@@ -4391,7 +4389,10 @@ local function Render()
     TickTheme(State.Delta)
     TickStartup(State.Delta)
 
-    if State.Startup.Active then
+    local startupIsLoading = State.Startup.Active and State.Startup.Phase == "loading"
+    local startupWasPop = State.Startup.Active and State.Startup.Phase == "pop"
+
+    if startupIsLoading then
         Geometry.Recalculate()
         ResetPool()
         DrawStartupFrame()
@@ -4436,6 +4437,13 @@ local function Render()
     InputContent()
 
     -- drag from title bar handled in DrawTitleBar already
+
+    -- During the opening expansion, the real interface is rendered immediately
+    -- underneath the fading startup content. This keeps the transition as one
+    -- continuous window instead of waiting for the resize to finish.
+    if startupWasPop then
+        DrawStartupFrame()
+    end
 
     -- notifications & tooltips sit above everything
     TickNotifications(State.Delta)
