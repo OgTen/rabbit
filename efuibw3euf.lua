@@ -1652,7 +1652,7 @@ end
 local function EnsureStartupLogo(url)
     local st = State.Startup
     if not url or url == "" then return end
-    if st.LogoURL == url and (st.LogoLoading or st.LogoData or st.LogoFailed) then
+    if st.LogoURL == url and (st.LogoLoading or st.LogoData or st.LogoImage or st.LogoFailed) then
         return
     end
 
@@ -1661,218 +1661,21 @@ local function EnsureStartupLogo(url)
     st.LogoFailed = false
     st.LogoLoading = true
 
-    task.spawn(function()
-        local ok, data = pcall(function()
-            if type(httpget) == "function" then
-                return httpget(url)
-            end
-            return game:HttpGet(url)
-        end)
-
-        if not State.Alive or State.Startup.LogoURL ~= url then
-            return
+    -- Load the startup image before the first startup frame is rendered.
+    -- This prevents the image from appearing late during the loading animation.
+    local ok, data = pcall(function()
+        if type(httpget) == "function" then
+            return httpget(url)
         end
-
-        if ok and type(data) == "string" and #data > 0 then
-            State.Startup.LogoData = data
-        else
-            State.Startup.LogoFailed = true
-        end
-        State.Startup.LogoLoading = false
+        return game:HttpGet(url)
     end)
-end
 
-local function ClearStartupLogo()
-    local st = State.Startup
-    if st.LogoImage then
-        pcall(function() st.LogoImage:Remove() end)
-        st.LogoImage = nil
-    end
-end
-
-local function DrawStartupBranding()
-    local th = State.Theme
-    local x, y, w, h = State.X, State.Y, State.W, State.H
-    local accent = th.Accent
-    local textColor = th.Text
-    local st = State.Startup
-
-    EnsureStartupLogo(st.LogoURL)
-
-    -- Keep the compact startup frame genuinely compact.
-    local logoSize = math.min(56, math.max(48, h * 0.58))
-    local titleSize = math.min(17, math.max(14, h * 0.17))
-    local title = "SHADOW UI"
-    local titleW = TextWidth(title, titleSize, FontBold)
-    local gap = 8
-    local groupW = logoSize + gap + titleW
-    local groupX = x + (w - groupW) / 2
-    local logoY = y + math.max(5, (h - logoSize) / 2 - 5)
-
-    local fade = 1
-    if st.Phase == "pop" then
-        fade = 1 - math.min(st.Time / 0.20, 1)
-        fade = fade * fade
-    end
-
-    if st.LogoData and not st.LogoImage then
-        local data = st.LogoData
-        local ok, image = pcall(function()
-            local obj = Drawing.new("Image")
-            -- Keep the image completely independent of the normal Drawing pool.
-            -- Matcha documents Image.Data as the raw binary returned by HttpGet.
-            obj.Visible = false
-            obj.Position = Vector2.new(groupX, logoY)
-            obj.Size = Vector2.new(logoSize, logoSize)
-            obj.Rounding = 5
-            obj.ZIndex = 2000001
-            obj.Transparency = 0
-            obj.Color = Color3.fromRGB(255, 255, 255)
-            obj.Data = data
-            -- Matcha accepts the raw binary image string as Data. Re-applying
-            -- the exact same bytes one scheduler turn later forces the external
-            -- renderer to refresh the texture after the Image object is live.
-            task.defer(function()
-                if not State.Alive or State.Startup.LogoImage ~= obj then return end
-                pcall(function() obj.Data = data end)
-                pcall(function() obj.Visible = true end)
-            end)
-            obj.Visible = fade > 0.001
-            return obj
-        end)
-        if ok and image then
-            st.LogoImage = image
-        else
-            st.LogoFailed = true
-        end
-        st.LogoData = nil
-    end
-
-    if st.LogoImage then
-        st.LogoImage.Position = Vector2.new(groupX, logoY)
-        st.LogoImage.Size = Vector2.new(logoSize, logoSize)
-        st.LogoImage.ZIndex = 2000001
-        st.LogoImage.Transparency = 1 - fade
-        st.LogoImage.Visible = fade > 0.001
+    if ok and type(data) == "string" and #data > 0 then
+        st.LogoData = data
     else
-        Rect(groupX, logoY, logoSize, logoSize, accent, 30, 5, 0.18 * fade)
-        Stroke(groupX, logoY, logoSize, logoSize, accent, 31, 5, 0.55 * fade)
-        TextCenter("S", groupX + logoSize / 2, logoY + 8, accent, titleSize + 3, FontBold, 32, fade)
+        st.LogoFailed = true
     end
-
-    -- The title emerges from underneath the image's right edge and slides
-    -- outward, rather than travelling in from empty space on the right.
-    local slideT = math.min(st.Time / 0.48, 1)
-    slideT = slideT * slideT * (3 - 2 * slideT)
-    local titleX = groupX + logoSize - 7 + (gap + 7) * slideT
-    Text(title, titleX, logoY + (logoSize - titleSize) / 2 + 1,
-         textColor, titleSize, FontBold, 32, fade, titleW + 2, false)
-
-    local barW = math.min(190, math.max(135, w - 38))
-    local barH = 4
-    local barX = x + (w - barW) / 2
-    local barY = y + h - 12
-    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42 * fade)
-    if st.Progress > 0 then
-        Rect(barX, barY, math.max(1, barW * st.Progress), barH, accent, 31, 2, 0.95 * fade)
-    end
-
-    if fade <= 0.001 and st.LogoImage then
-        pcall(function() st.LogoImage.Visible = false end)
-    end
-end
-
-local function DrawStartupFrame()
-    local th = State.Theme
-    local x, y, w, h = State.X, State.Y, State.W, State.H
-    GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
-    DrawGlassBorder(th)
-    DrawStartupBranding()
-end
-
-local function TickStartup(dt)
-    local st = State.Startup
-    if not st.Active then return end
-    st.Time = st.Time + dt
-
-    if st.Phase == "loading" then
-        local t = math.min(st.Time / st.Duration, 1)
-        st.Progress = 1 - (1 - t) * (1 - t)
-        if t >= 1 then
-            st.Phase = "pop"
-            st.Time = 0
-            st.Progress = 1
-        end
-        return
-    end
-
-    if st.Phase == "pop" then
-        -- Expand continuously from the exact compact loading frame.
-        local t = math.min(st.Time / 1.60, 1)
-        local eased = StartupEase(t)
-
-        State.W = st.StartW + (st.TargetW - st.StartW) * eased
-        State.H = st.StartH + (st.TargetH - st.StartH) * eased
-        State.X = st.TargetX + (st.TargetW - State.W) / 2
-        State.Y = st.TargetY + (st.TargetH - State.H) / 2
-
-        if t >= 1 then
-            State.X, State.Y = st.TargetX, st.TargetY
-            State.W, State.H = st.TargetW, st.TargetH
-            st.Phase = "reveal"
-            st.Time = 0
-            st.RevealProgress = 0
-            if st.LogoImage then
-                pcall(function() st.LogoImage:Remove() end)
-                st.LogoImage = nil
-            end
-        end
-        return
-    end
-
-    if st.Phase == "reveal" then
-        st.Time = st.Time + dt
-        local t = math.min(st.Time / st.RevealDuration, 1)
-        st.RevealProgress = t * t * (3 - 2 * t)
-        if t >= 1 then
-            st.RevealProgress = 1
-            st.Active = false
-            st.Phase = "done"
-        end
-    end
-end
-
-local function StartStartup(opts)
-    opts = opts or {}
-    local st = State.Startup
-    local vp = Camera.ViewportSize
-
-    st.Duration = math.max(0.5, opts.Duration or 2.0)
-    st.Time = 0
-    st.Progress = 0
-    st.RevealProgress = 0
-    st.Phase = "loading"
-    st.LogoURL = opts.logo or opts.Logo or nil
-    st.LogoData = nil
     st.LogoLoading = false
-    st.LogoFailed = false
-    ClearStartupLogo()
-    st.Active = true
-
-    st.TargetW, st.TargetH = State.W, State.H
-    st.TargetX, st.TargetY = State.X, State.Y
-
-    st.StartW = math.min(285, math.max(250, st.TargetW * 0.36))
-    st.StartH = math.min(88, math.max(82, st.TargetH * 0.17))
-    st.StartX = math.floor((vp.X - st.StartW) / 2)
-    st.StartY = math.floor((vp.Y - st.StartH) / 2)
-
-    State.W, State.H = st.StartW, st.StartH
-    State.X, State.Y = st.StartX, st.StartY
-    State.Visible = 1
-    State.Open = true
-    State.RailOpen = 0
-    State.Ready = true
 end
 
 -- ============================================================================
