@@ -1651,7 +1651,10 @@ end
 
 local function EnsureStartupLogo(url)
     local st = State.Startup
-    if not url or url == "" then return end
+    if not url or url == "" then
+        return
+    end
+
     if st.LogoURL == url and (st.LogoLoading or st.LogoData or st.LogoFailed) then
         return
     end
@@ -1663,9 +1666,6 @@ local function EnsureStartupLogo(url)
 
     task.spawn(function()
         local ok, data = pcall(function()
-            if type(httpget) == "function" then
-                return httpget(url)
-            end
             return game:HttpGet(url)
         end)
 
@@ -1673,11 +1673,14 @@ local function EnsureStartupLogo(url)
             return
         end
 
-        if ok and type(data) == "string" and #data > 0 then
+        if ok and type(data) == "string" and #data > 100 then
             State.Startup.LogoData = data
+            print("[ShadowUI] Logo downloaded:", #data, "bytes")
         else
             State.Startup.LogoFailed = true
+            print("[ShadowUI] Logo download failed")
         end
+
         State.Startup.LogoLoading = false
     end)
 end
@@ -1745,25 +1748,26 @@ local function DrawStartupBranding()
          textColor, titleSize, FontBold, 32, fade, titleW + 2, false)
 
     if st.LogoData and not st.LogoImage then
-        local raw = st.LogoData
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
-            obj.ZIndex = 60
+    
+            obj.Data = st.LogoData
             obj.Position = Vector2.new(groupX, logoY)
-            obj.Size = Vector2.new(logoSize, logoSize)
-            pcall(function() obj.Rounding = 5 end)
+            obj.Size = Vector2.new(42, 42)
+            obj.Rounding = 5
+            obj.ZIndex = 60
             obj.Transparency = 0
             obj.Visible = true
-            obj.Data = raw
+    
             return obj
         end)
+    
         if ok and image then
             st.LogoImage = image
             st.LogoData = nil
+            print("[ShadowUI] Logo image created successfully")
         else
-            -- Keep the downloaded bytes for the next frame in case Matcha
-            -- was not ready to construct the Image object yet.
-            st.LogoFailed = false
+            print("[ShadowUI] Drawing.Image creation failed")
         end
     end
 
