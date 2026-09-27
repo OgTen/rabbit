@@ -1624,8 +1624,8 @@ local function DrawTitleBar(title)
     local cy = State.Y + Layout.TopbarH / 2
     local cxLeft = State.X + 14
 
-    -- brand mark: small rounded square + first letter
-    local markSize = 20
+    -- brand mark: slightly larger left-corner logo
+    local markSize = 26
     local markX = cxLeft
     local markY = cy - markSize / 2
 
@@ -1635,17 +1635,20 @@ local function DrawTitleBar(title)
            th.Accent, 31, 5, 0.55)
 
     local letter = string.upper(string.sub(title, 1, 1))
-    local letterW = TextWidth(letter, 13, FontBold)
+    local logoTextSize = 14
+    local letterW = TextWidth(letter, logoTextSize, FontBold)
     Text(letter, markX + markSize / 2 - letterW / 2,
-         markY + (markSize - 13) / 2,
-         th.Accent, 13, FontBold, 32, 1)
+         markY + (markSize - logoTextSize) / 2,
+         th.Accent, logoTextSize, FontBold, 32, 1)
 
-    -- title text
-    local titleX = markX + markSize + 10
-    local titleY = TextMidY(State.Y, Layout.TopbarH, 13)
+    -- centered window title
+    local titleSize = 15
+    local titleW = TextWidth(title, titleSize, FontBold)
+    local titleX = State.X + (State.W - titleW) / 2
+    local titleY = TextMidY(State.Y, Layout.TopbarH, titleSize)
     Text(title, titleX, titleY,
-         th.Text, 13, FontBold, 33, 0.95,
-         Geometry.RailW - (titleX - State.X) - 8)
+         th.Text, titleSize, FontBold, 33, 1,
+         titleW + 2)
 
     -- close button (top right)
     local closeSize = TitleButtons.Close.Size
