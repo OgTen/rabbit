@@ -55,19 +55,19 @@ end
 local Themes = {
     {
         Name        = "Midnight",
-        Base        = rgb(27, 30, 42),      -- window background
-        Panel       = rgb(37, 41, 56),      -- control card background
-        PanelHi     = rgb(48, 53, 70),      -- hover/active panel
-        Stroke      = rgb(67, 73, 96),      -- panel borders
-        Divider     = rgb(52, 57, 78),
+        Base        = rgb(36, 40, 54),      -- window background
+        Panel       = rgb(46, 51, 68),      -- control card background
+        PanelHi     = rgb(58, 64, 82),      -- hover/active panel
+        Stroke      = rgb(78, 85, 110),      -- panel borders
+        Divider     = rgb(60, 66, 88),
         Text        = rgb(232, 234, 245),
-        TextDim     = rgb(190, 195, 212),
-        TextMuted   = rgb(140, 146, 168),
+        TextDim     = rgb(202, 207, 223),
+        TextMuted   = rgb(154, 160, 181),
         AccentA     = rgb(120, 140, 255),
         AccentB     = rgb(180, 130, 255),
         Accent      = rgb(150, 135, 255),
         AccentDim   = rgb(96, 90, 180),
-        Track       = rgb(58, 63, 84),
+        Track       = rgb(66, 72, 94),
         TrackFill   = rgb(120, 140, 255),
         Danger      = rgb(255, 96, 120),
         Warning     = rgb(255, 190, 90),
@@ -75,19 +75,19 @@ local Themes = {
     },
     {
         Name        = "Obsidian",
-        Base        = rgb(25, 27, 34),
-        Panel       = rgb(35, 37, 46),
-        PanelHi     = rgb(47, 50, 61),
-        Stroke      = rgb(63, 66, 81),
-        Divider     = rgb(49, 51, 64),
+        Base        = rgb(33, 35, 43),
+        Panel       = rgb(43, 45, 55),
+        PanelHi     = rgb(56, 59, 70),
+        Stroke      = rgb(73, 76, 92),
+        Divider     = rgb(57, 59, 73),
         Text        = rgb(228, 228, 235),
-        TextDim     = rgb(188, 190, 205),
-        TextMuted   = rgb(139, 141, 157),
+        TextDim     = rgb(200, 202, 216),
+        TextMuted   = rgb(151, 153, 170),
         AccentA     = rgb(120, 220, 210),
         AccentB     = rgb(90, 180, 240),
         Accent      = rgb(105, 200, 225),
         AccentDim   = rgb(70, 130, 160),
-        Track       = rgb(56, 58, 72),
+        Track       = rgb(63, 65, 79),
         TrackFill   = rgb(120, 220, 210),
         Danger      = rgb(255, 90, 110),
         Warning     = rgb(255, 180, 80),
@@ -95,19 +95,19 @@ local Themes = {
     },
     {
         Name        = "Burgundy",
-        Base        = rgb(38, 23, 30),
-        Panel       = rgb(50, 30, 39),
-        PanelHi     = rgb(64, 38, 49),
-        Stroke      = rgb(87, 52, 65),
-        Divider     = rgb(65, 39, 50),
+        Base        = rgb(44, 27, 35),
+        Panel       = rgb(57, 35, 45),
+        PanelHi     = rgb(69, 42, 53),
+        Stroke      = rgb(96, 60, 74),
+        Divider     = rgb(73, 45, 58),
         Text        = rgb(245, 232, 235),
-        TextDim     = rgb(180, 150, 160),
-        TextMuted   = rgb(120, 90, 100),
+        TextDim     = rgb(195, 166, 176),
+        TextMuted   = rgb(139, 106, 117),
         AccentA     = rgb(255, 130, 150),
         AccentB     = rgb(255, 90, 140),
         Accent      = rgb(255, 110, 145),
         AccentDim   = rgb(160, 70, 95),
-        Track       = rgb(48, 30, 38),
+        Track       = rgb(56, 35, 44),
         TrackFill   = rgb(255, 130, 150),
         Danger      = rgb(255, 80, 80),
         Warning     = rgb(255, 190, 90),
@@ -1307,12 +1307,10 @@ local function TickDrag(dt)
         d.WantY = Input.Y - d.GrabY
     end
 
-    if State.NoAnim then
-        State.X, State.Y = d.WantX, d.WantY
-    else
-        State.X = Approach(State.X, d.WantX, State.DragSpeed, dt)
-        State.Y = Approach(State.Y, d.WantY, State.DragSpeed, dt)
-    end
+    -- Dragging is intentionally immediate. Every drawable is derived from
+    -- State.X/Y in the same frame, preventing visible separation between
+    -- the window shell and its contents.
+    State.X, State.Y = d.WantX, d.WantY
 
     -- snap
     if not Input.Down
@@ -1349,41 +1347,46 @@ local function DrawFrame()
 
     -- main background
     Rect(State.X, State.Y, State.W, State.H,
-         th.Base, 10, Layout.Corner, 0.94)
+         th.Base, 10, Layout.Corner, 1.0)
 
     -- accent stroke at top
     GradientRect(
-        State.X + 1, State.Y + 1, State.W - 2, 1.5,
+        State.X + Layout.Corner, State.Y + 1,
+        State.W - Layout.Corner * 2, 1.5,
         th.AccentA, th.AccentB, 12, 0.55
     )
 
     -- subtle border
     Stroke(State.X, State.Y, State.W, State.H,
-           th.Stroke, 11, Layout.Corner, 0.72)
+           th.Stroke, 20, Layout.Corner, 0.88)
 
     -- top bar
-    Rect(State.X, State.Y, State.W, Layout.TopbarH,
-         th.Panel, 12, Layout.Corner, 0.98)
+    Rect(State.X + 1, State.Y + 1, State.W - 2, Layout.TopbarH - 1,
+         th.Panel, 12, 0, 1.0)
 
     -- bottom of topbar divider
-    Line(State.X + 6, State.Y + Layout.TopbarH,
-         State.X + State.W - 6, State.Y + Layout.TopbarH,
+    Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
+         State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
          th.Divider, 13, 1, 0.95)
 
-    -- rail background
-    Rect(Geometry.RailX, Geometry.RailY,
-         Geometry.RailW, Geometry.RailH,
-         th.Panel, 13, 0, 0.98)
+    -- Inner surfaces stay one pixel inside the outer rounded shell.
+    -- They never own the window silhouette, so they cannot square off
+    -- the outer corners or overlap the border.
+    local innerY = State.Y + Layout.TopbarH
+    local innerH = math.max(0, State.H - Layout.TopbarH - Layout.Corner)
 
-    -- rail right divider
-    Line(Geometry.RailX + Geometry.RailW, Geometry.RailY,
-         Geometry.RailX + Geometry.RailW, Geometry.RailY + Geometry.RailH,
-         th.Divider, 14, 1, 0.85)
+    Rect(State.X + 1, innerY,
+         math.max(0, Geometry.RailW - 2), innerH,
+         th.Panel, 13, 0, 1.0)
 
-    -- content background
-    Rect(Geometry.ContentX, Geometry.ContentY,
-         Geometry.ContentW, Geometry.ContentH,
-         th.Base, 14, 0, 0.96)
+    Rect(Geometry.ContentX, innerY,
+         math.max(0, State.W - Geometry.RailW - 1), innerH,
+         th.Base, 14, 0, 1.0)
+
+    -- rail/content divider
+    Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
+         Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
+         th.Divider, 15, 1, 0.9)
 end
 
 -- ============================================================================
