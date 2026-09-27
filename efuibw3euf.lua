@@ -1960,6 +1960,14 @@ local function DrawTabRail()
             local yOffset = (rowH - tabRowH) * 0.5
             y = y + yOffset
 
+            local railClipTop = sectionY + 1
+            local railClipBottom = sectionY + sectionH - 1
+            local insideAnimatedRail = (y >= railClipTop and y + tabRowH <= railClipBottom)
+            if State.Startup.Active and not insideAnimatedRail then
+                rowY = rowY + rowH + tabGap
+                continue
+            end
+
             local hover = MouseIn(x, y, w, tabRowH)
             local active = (State.ActiveIndex == i)
 
@@ -3706,18 +3714,33 @@ local function DrawContent()
                 if nextRow and not nextRow.Hidden and IsSection(nextRow) then
                     local h1 = MeasureSection(row, halfW)
                     local h2 = MeasureSection(nextRow, halfW)
-                    DrawSection(row, x1, cy, halfW)
-                    DrawSection(nextRow, x2, cy, halfW)
-                    cy = cy + math.max(h1, h2) + Layout.SectionGap
+                    local pairH = math.max(h1, h2)
+                    local clipTop = viewportTop
+                    local clipBottom = Geometry.ContentY + Geometry.ContentH
+                    if not State.Startup.Active or (cy >= clipTop and cy + pairH <= clipBottom) then
+                        DrawSection(row, x1, cy, halfW)
+                        DrawSection(nextRow, x2, cy, halfW)
+                    end
+                    cy = cy + pairH + Layout.SectionGap
                     i = i + 2
                 else
-                    DrawSection(row, x1, cy, halfW)
-                    cy = cy + MeasureSection(row, halfW) + Layout.SectionGap
+                    local sectionH = MeasureSection(row, halfW)
+                    local clipTop = viewportTop
+                    local clipBottom = Geometry.ContentY + Geometry.ContentH
+                    if not State.Startup.Active or (cy >= clipTop and cy + sectionH <= clipBottom) then
+                        DrawSection(row, x1, cy, halfW)
+                    end
+                    cy = cy + sectionH + Layout.SectionGap
                     i = i + 1
                 end
             else
-                local h = DrawRow(row, Geometry.InnerX, cy, Geometry.InnerW)
-                cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
+                local h = row.Height or Layout.RowHeight
+                local clipTop = viewportTop
+                local clipBottom = Geometry.ContentY + Geometry.ContentH
+                if not State.Startup.Active or (cy >= clipTop and cy + h <= clipBottom) then
+                    h = DrawRow(row, Geometry.InnerX, cy, Geometry.InnerW) or h
+                end
+                cy = cy + h + Layout.RowGapY
                 i = i + 1
             end
         else
