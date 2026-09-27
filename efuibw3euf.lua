@@ -1627,49 +1627,19 @@ local function TickRailOpen(dt)
         Geometry.Recalculate()
     end
 
-    -- Only the actual collapsed tab/icon area opens the rail.
-    -- The expanded width is intentionally NOT part of the initial trigger zone.
-    local sectionPadX = 7
+    -- The entire detached sidebar section is the hover trigger.
+    -- This means the rail opens when the cursor is anywhere over the
+    -- sidebar surface, not just when it is directly over a tab.
+    local sectionPadX = 4
     local sectionPadY = 5
-    local narrowW = Layout.TabRailNarrow
-    local narrowSectionW = math.max(40, narrowW - sectionPadX * 2)
-    local triggerX = Geometry.RailX + sectionPadX
-    local triggerY = Geometry.RailY + sectionPadY + 11
-    local rowH = Layout.TabRowH
-    local tabGap = Layout.TabGap
+    local sectionX = Geometry.RailX + sectionPadX
+    local sectionY = Geometry.RailY + sectionPadY
+    local sectionW = math.max(40, Geometry.RailW - sectionPadX * 2)
+    local sectionH = math.max(44, Geometry.RailH - 10)
 
-    local overCollapsedTab = false
-    local rowY = triggerY
-    for _, tab in ipairs(State.Tabs) do
-        if not tab.Hidden then
-            if MouseIn(triggerX, rowY, narrowSectionW, rowH) then
-                overCollapsedTab = true
-                break
-            end
-            rowY = rowY + rowH + tabGap
-        end
-    end
+    local overSidebar = MouseIn(sectionX, sectionY, sectionW, sectionH)
 
-    -- Once the rail has started opening, the currently expanded tab can keep
-    -- it open. This prevents the cursor from falling through while the panel
-    -- is moving, without making the entire future sidebar a trigger zone.
-    local overExpandedTab = false
-    if State.RailOpen > 0.01 then
-        local sectionY = Geometry.RailY + sectionPadY
-        local sectionW = math.max(40, Geometry.RailW - sectionPadX * 2)
-        local y = sectionY + 11
-        for _, tab in ipairs(State.Tabs) do
-            if not tab.Hidden then
-                if MouseIn(Geometry.RailX + sectionPadX, y, sectionW, rowH) then
-                    overExpandedTab = true
-                    break
-                end
-                y = y + rowH + tabGap
-            end
-        end
-    end
-
-    local target = (State.RailPinned or overCollapsedTab or overExpandedTab) and 1 or 0
+    local target = (State.RailPinned or overSidebar) and 1 or 0
 
     -- Smooth but responsive expansion.
     State.RailOpen = Approach(State.RailOpen, target, 7, dt)
@@ -1712,7 +1682,10 @@ local function DrawTabRail()
 
     for i, tab in ipairs(State.Tabs) do
         if not tab.Hidden then
-            local x = sectionX + padX
+            -- Give collapsed tabs a little more usable width while keeping
+            -- their right edge exactly inside the detached sidebar section.
+            local collapsedPadX = 5
+            local x = sectionX + (padX - (padX - collapsedPadX) * (1 - openAmt))
             local y = rowY
 
             -- The tab itself grows continuously with the sidebar animation.
@@ -1725,7 +1698,7 @@ local function DrawTabRail()
             -- Give collapsed tabs a little more horizontal room while keeping
             -- the expanded tabs fully inside the detached sidebar section.
             local sectionTabW = math.max(1, sectionW - padX * 2)
-            local narrowTabW = math.max(1, sectionW - padX)
+            local narrowTabW = math.max(1, sectionW - collapsedPadX)
             local wideTabW = sectionTabW
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
