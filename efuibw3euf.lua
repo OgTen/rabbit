@@ -1620,54 +1620,18 @@ end
 -- ============================================================================
 
 local function TickRailOpen(dt)
-    -- Establish valid geometry before reading the rail coordinates.
-    if Geometry.RailX == nil or Geometry.RailY == nil
-       or Geometry.RailW == nil or Geometry.RailH == nil then
-        Geometry.Recalculate()
-    end
+    -- Use the full expanded sidebar as the hover zone instead of the current
+    -- animated width. This prevents the cursor from falling outside the rail
+    -- while it is expanding, which was causing the open/close animation to
+    -- fight itself and look rough.
+    local hoverW = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
+    local inRail = MouseIn(State.X, Geometry.RailY,
+                           hoverW, Geometry.RailH)
 
-    -- Only the collapsed tab/icon area starts the opening animation.
-    -- The expanded sidebar is not used as the initial trigger zone.
-    local sectionPadX = 7
-    local sectionPadY = 5
-    local narrowW = Layout.TabRailNarrow
-    local narrowSectionW = math.max(40, narrowW - sectionPadX * 2)
-    local triggerX = Geometry.RailX + sectionPadX
-    local triggerY = Geometry.RailY + sectionPadY + 11
-    local rowH = Layout.TabRowH
-    local tabGap = Layout.TabGap
+    local target = (State.RailPinned or inRail) and 1 or 0
 
-    local overCollapsedTab = false
-    local rowY = triggerY
-    for _, tab in ipairs(State.Tabs) do
-        if not tab.Hidden then
-            if MouseIn(triggerX, rowY, narrowSectionW, rowH) then
-                overCollapsedTab = true
-                break
-            end
-            rowY = rowY + rowH + tabGap
-        end
-    end
-
-    -- Once opening has started, allow the expanded tab area to keep it open.
-    local overExpandedTab = false
-    if State.RailOpen > 0.01 then
-        local sectionY = Geometry.RailY + sectionPadY
-        local sectionW = math.max(40, Geometry.RailW - sectionPadX * 2)
-        local y = sectionY + 11
-        for _, tab in ipairs(State.Tabs) do
-            if not tab.Hidden then
-                if MouseIn(Geometry.RailX + sectionPadX, y, sectionW, rowH) then
-                    overExpandedTab = true
-                    break
-                end
-                y = y + rowH + tabGap
-            end
-        end
-    end
-
-    local target = (State.RailPinned or overCollapsedTab or overExpandedTab) and 1 or 0
-
+    -- Slightly slower exponential approach gives the rail a softer, more
+    -- deliberate ease without introducing a second animation system.
     State.RailOpen = Approach(State.RailOpen, target, 7, dt)
     if math.abs(State.RailOpen - target) < 0.001 then
         State.RailOpen = target
@@ -1688,8 +1652,8 @@ local function DrawTabRail()
     -- Keep a clear gap from the main window edge so the navigation reads as
     -- its own floating section. It is slightly larger than the previous build.
     local sectionPadX = 7
-    -- Keep the sidebar anchored. The animation changes its width and tab contents,
-    -- never the sidebar's left position.
+
+    -- The sidebar itself stays anchored. Only its contents animate.
     local sectionX = Geometry.RailX + sectionPadX
     local sectionY = Geometry.RailY + 5
     local sectionW = math.max(40, railW - sectionPadX * 2)
@@ -1709,6 +1673,7 @@ local function DrawTabRail()
             local x = sectionX + padX
             local y = rowY
 
+            -- Smoothly grow each tab with the rail without moving the rail.
             local narrowTabW = math.max(1, Layout.TabRailNarrow - padX * 2)
             local wideTabW = math.max(1, math.max(Layout.TabRailW, math.floor(State.W * 0.22)) - padX * 2)
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
@@ -4381,7 +4346,7 @@ local function Render()
         return
     end
 
-    -- TickRailOpen reads derived rail geometry, so establish a valid baseline first.
+    -- Establish geometry before the rail animation reads its coordinates.
     Geometry.Recalculate()
 
     -- animate/state updates
@@ -4390,7 +4355,7 @@ local function Render()
     TickResize()
     TickTooltip(State.Delta)
 
-    -- Recalculate after state changes so rendering uses the final geometry.
+    -- geometry
     Geometry.Recalculate()
 
     -- reset drawing pool for this frame
