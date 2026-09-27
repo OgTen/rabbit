@@ -4379,8 +4379,12 @@ local function Render()
         return
     end
 
-    -- animate/state updates first. Geometry must be calculated AFTER these
-    -- so every element uses the exact same window position for this frame.
+    -- TickRailOpen needs the previous frame geometry because its hover trigger
+    -- uses the rail coordinates. Calculate that baseline before reading them.
+    Geometry.Recalculate()
+
+    -- animate/state updates first. Recalculate again after these updates so every
+    -- element uses the exact same window position and rail width for this frame.
     TickRailOpen(State.Delta)
     TickDrag(State.Delta)
     TickResize()
