@@ -59,7 +59,7 @@ local Themes = {
         Panel       = rgb(46, 51, 68),      -- control card background
         PanelHi     = rgb(58, 64, 82),      -- hover/active panel
         Stroke      = rgb(78, 85, 110),      -- panel borders
-        Divider     = rgb(60, 66, 88),
+        Divider     = rgb(78, 86, 112),
         Text        = rgb(232, 234, 245),
         TextDim     = rgb(202, 207, 223),
         TextMuted   = rgb(154, 160, 181),
@@ -79,7 +79,7 @@ local Themes = {
         Panel       = rgb(43, 45, 55),
         PanelHi     = rgb(56, 59, 70),
         Stroke      = rgb(73, 76, 92),
-        Divider     = rgb(57, 59, 73),
+        Divider     = rgb(74, 78, 98),
         Text        = rgb(228, 228, 235),
         TextDim     = rgb(200, 202, 216),
         TextMuted   = rgb(151, 153, 170),
@@ -99,7 +99,7 @@ local Themes = {
         Panel       = rgb(57, 35, 45),
         PanelHi     = rgb(69, 42, 53),
         Stroke      = rgb(96, 60, 74),
-        Divider     = rgb(73, 45, 58),
+        Divider     = rgb(94, 58, 72),
         Text        = rgb(245, 232, 235),
         TextDim     = rgb(195, 166, 176),
         TextMuted   = rgb(139, 106, 117),
@@ -1210,9 +1210,6 @@ function Tab.new(parent, opts)
         ScrollTo = 0,            -- animation target
         MaxScroll = 0,
 
-        -- children
-        Subs     = {},           -- sub-tabs if used later
-
         -- pending redraw pass
         Dirty    = true,
     }, Tab)
@@ -1596,7 +1593,7 @@ local function DrawFrame()
     -- Internal structure only.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.24)
+         th.Divider, 14, 1, 0.38)
 
     -- Keep the vertical separator exactly one sidebar-section padding unit
     -- to the right of the detached section, matching the 10px left inset.
@@ -1607,7 +1604,7 @@ local function DrawFrame()
 
     Line(separatorX, Geometry.RailY + 1,
          separatorX, State.Y + State.H - 2,
-         th.Divider, 14, 1, 0.20)
+         th.Divider, 14, 1, 0.34)
 
     -- Footer is part of the same glass surface as the main window.
     -- Do not draw another surface here; the pane underneath already provides
@@ -1615,7 +1612,7 @@ local function DrawFrame()
     local footerY = State.Y + State.H - Geometry.FooterH
     Line(State.X + Layout.Corner, footerY,
          State.X + State.W - Layout.Corner, footerY,
-         th.Divider, 16, 1, 0.20)
+         th.Divider, 16, 1, 0.34)
 
     -- Single animated glass edge.
     DrawGlassBorder(th)
@@ -3474,779 +3471,7 @@ Register("ColorPicker", function(parent, opts)
     return self
 end)
 
--- ============================================================================
---  SUB-TABS  --  secondary tab bar inside a tab's content area
--- ============================================================================
 
-local SubTab = {}
-SubTab.__index = SubTab
-
-function SubTab.new(parent, name, icon)
-    local self = setmetatable({
-        Parent   = parent,
-        Name     = name or "Sub",
-        Icon     = icon,
-        Rows     = {},
-        Scroll   = 0,
-        ScrollTo = 0,
-        MaxScroll = 0,
-    }, SubTab)
-    parent.Subs = parent.Subs or {}
-    parent.Subs[#parent.Subs + 1] = self
-    if #parent.Subs == 1 then
-        parent.ActiveSub = self
-    end
-    return self
-end
-
-function SubTab:AddRow(builder)
-    self.Rows[#self.Rows + 1] = builder
-    return builder
-end
-
--- renders a sub-tab header row (pill buttons)
-local function DrawSubTabs(parent, x, y, w)
-    if not parent.Subs or #parent.Subs == 0 then return 0 end
-
-    local th = State.Theme
-    local pillH = 24
-    local padX = 8
-    local gap = 6
-    local cx = x
-
-    for _, sub in ipairs(parent.Subs) do
-        local tw = TextWidth(sub.Name, Layout.SmallSize, FontBold)
-        local pillW = tw + 20
-        local hover = MouseIn(cx, y, pillW, pillH)
-        local active = parent.ActiveSub == sub
-
-        sub._anim = Approach(sub._anim or 0, active and 1 or 0, 20, State.Delta)
-        if math.abs(sub._anim - (active and 1 or 0)) < 0.01 then
-            sub._anim = active and 1 or 0
-        end
-
-        local bg = mix(th.Panel, th.Accent, sub._anim * 0.4)
-        local bgA = 0.5 + 0.4 * sub._anim + (active and 0 or (hover and 0.15 or 0))
-        Rect(cx, y, pillW, pillH, bg, 51, 5, bgA)
-        Stroke(cx, y, pillW, pillH, th.Stroke, 52, 5, 0.4 + 0.4 * sub._anim)
-
-        local labelColor = active and th.Accent or th.Text
-        Text(sub.Name, cx + 10, y + (pillH - Layout.SmallSize) / 2,
-             labelColor, Layout.SmallSize, FontBold,
-             53, active and 1 or (hover and 0.9 or 0.75))
-
-        if hover and Input.Click then
-            Input.Click = false
-            parent.ActiveSub = sub
-        end
-
-        cx = cx + pillW + gap
-    end
-
-    return pillH + Layout.RowGapY
-end
-
--- ============================================================================
---  SPOTLIGHT  --  fuzzy search overlay for controls across all tabs
--- ============================================================================
-
-local Spotlight = {
-    Open = false,
-    Query = "",
-    Caret = 0,
-    Anchor = nil,
-    Results = {},      -- { { Tab = tab, Row = row, Name = "..." , Kind = "..." } }
-    SelectedIndex = 1,
-    ScrollTo = 0,
-    Scroll = 0,
-    _anim = 0,
-}
-
-local function CollectRows()
-    local list = {}
-    for ti, tab in ipairs(State.Tabs) do
-        local function walk(container, path)
-            for _, row in ipairs(container.Rows or {}) do
-                if not row.Hidden and row.Title and row.Title ~= "" then
-                    list[#list + 1] = {
-                        Tab = tab,
-                        TabName = tab.Name,
-                        Row = row,
-                        Name = row.Title,
-                        Kind = row.Kind or "Control",
-                        Path = path,
-                    }
-                end
-                if getmetatable(row) == Section then
-                    walk(row, (path or "") .. (row.Title or "") .. " / ")
-                elseif getmetatable(row) == InlineRow then
-                    -- inline cells skip path prefix
-                end
-            end
-        end
-        walk(tab, "")
-    end
-    return list
-end
-
-local function FuzzyMatch(query, text)
-    if query == "" then return true, 0 end
-    local q, t = string.lower(query), string.lower(text)
-    local qi, ti = 1, 1
-    local score = 0
-    local lastMatch = 0
-
-    while qi <= #q and ti <= #t do
-        if q:sub(qi, qi) == t:sub(ti, ti) then
-            score = score + (10 - math.min(9, ti - lastMatch))
-            lastMatch = ti
-            qi = qi + 1
-        end
-        ti = ti + 1
-    end
-
-    return qi > #q, score
-end
-
-local function RefreshSpotlight()
-    local all = CollectRows()
-    local q = Spotlight.Query
-    local filtered = {}
-
-    if q == "" then
-        for i = 1, math.min(#all, 40) do
-            filtered[#filtered + 1] = all[i]
-        end
-    else
-        local scored = {}
-        for _, entry in ipairs(all) do
-            local match, score = FuzzyMatch(q, entry.Name)
-            if match then
-                scored[#scored + 1] = { entry = entry, score = score }
-            end
-        end
-        table.sort(scored, function(a, b) return a.score > b.score end)
-        for i = 1, math.min(#scored, 40) do
-            filtered[#filtered + 1] = scored[i].entry
-        end
-    end
-
-    Spotlight.Results = filtered
-    Spotlight.SelectedIndex = math.min(math.max(Spotlight.SelectedIndex, 1), #filtered)
-end
-
-local function OpenSpotlight()
-    Spotlight.Open = true
-    Spotlight.Query = ""
-    Spotlight.Caret = 0
-    Spotlight.Anchor = nil
-    Spotlight.ScrollTo = 0
-    Spotlight.Scroll = 0
-    Spotlight.SelectedIndex = 1
-    RefreshSpotlight()
-    SetFocus({
-        Value = "",
-        Caret = 0,
-        Anchor = nil,
-        OnCommit = function(v)
-            Spotlight.Query = v
-            RefreshSpotlight()
-        end,
-    })
-end
-
-local function CloseSpotlight()
-    Spotlight.Open = false
-    ClearFocus()
-end
-
-local function DrawSpotlight()
-    if not Spotlight.Open then return end
-
-    Spotlight._anim = Approach(Spotlight._anim, 1, 22, State.Delta)
-    if math.abs(Spotlight._anim - 1) < 0.01 then Spotlight._anim = 1 end
-    local a = Spotlight._anim
-
-    local vp = Camera.ViewportSize
-    local panelW = 520
-    local panelH = 380
-    local panelX = (vp.X - panelW) / 2
-    local panelY = math.max(80, vp.Y * 0.18)
-
-    -- full-screen veil
-    Rect(0, 0, vp.X, vp.Y, Color3.new(0, 0, 0), 100, 0, 0.45 * a)
-
-    -- panel
-    Rect(panelX + 2, panelY + 4, panelW, panelH, Color3.new(0, 0, 0), 101, 12, 0.35 * a)
-    Rect(panelX, panelY, panelW, panelH, State.Theme.Base, 102, 12, 0.98 * a)
-    Stroke(panelX, panelY, panelW, panelH, State.Theme.Accent, 103, 12, 0.55 * a)
-
-    -- search field row
-    local fieldH = 38
-    local fieldY = panelY + 12
-    local fieldX = panelX + 12
-    local fieldW = panelW - 24
-
-    Rect(fieldX, fieldY, fieldW, fieldH, State.Theme.PanelHi, 104, 8, 0.6 * a)
-    Stroke(fieldX, fieldY, fieldW, fieldH, State.Theme.Accent, 105, 8, 0.5 * a)
-
-    -- search icon
-    local sx, sy = fieldX + 16, fieldY + fieldH / 2
-    Circle(sx, sy, 6, State.Theme.Accent, 106, false, 1.6, 20, 0.9 * a)
-    Bar(sx + 4, sy + 4, sx + 8, sy + 8, 1.8, State.Theme.Accent, 106, 0.9 * a)
-
-    -- query text or placeholder
-    local textX = fieldX + 32
-    local textY = fieldY + (fieldH - 14) / 2
-    local q = Spotlight.Query
-    if q == "" then
-        Text("Search controls...", textX, textY,
-             State.Theme.TextMuted, 14, FontSystem, 107, 0.6 * a)
-    else
-        Text(q, textX, textY,
-             State.Theme.Text, 14, FontSystem, 107, a)
-
-        -- caret
-        local caretX = textX + TextWidth(q, 14, FontSystem)
-        Rect(caretX + 1, fieldY + 8, 1.4, fieldH - 16, State.Theme.Accent, 108, 0, a)
-    end
-
-    -- results list
-    local listY = fieldY + fieldH + 10
-    local listH = panelH - (listY - panelY) - 14
-    local rowH = 32
-    local visible = math.floor(listH / rowH)
-
-    local maxScroll = math.max(0, #Spotlight.Results - visible)
-    Spotlight.ScrollTo = Clamp(Spotlight.ScrollTo, 0, maxScroll)
-    Spotlight.Scroll = Approach(Spotlight.Scroll, Spotlight.ScrollTo, 22, State.Delta)
-
-    if #Spotlight.Results == 0 then
-        Text("No matches", panelX + panelW / 2 - 40, listY + 20,
-             State.Theme.TextMuted, 13, FontSystem, 108, 0.6 * a)
-    else
-        for i = 1, math.min(visible, #Spotlight.Results) do
-            local idx = i + math.floor(Spotlight.Scroll)
-            local entry = Spotlight.Results[idx]
-            if not entry then break end
-
-            local ry = listY + (i - 1) * rowH
-            local selected = idx == Spotlight.SelectedIndex
-            local hover = MouseIn(panelX + 8, ry, panelW - 16, rowH)
-
-            if selected then
-                Rect(panelX + 8, ry, panelW - 16, rowH, State.Theme.Accent, 108, 6, 0.15 * a)
-            elseif hover then
-                Rect(panelX + 8, ry, panelW - 16, rowH, State.Theme.PanelHi, 108, 6, 0.5 * a)
-            end
-
-            -- tab badge
-            local badge = entry.TabName
-            local bw = TextWidth(badge, 11, FontBold) + 12
-            Rect(panelX + 14, ry + 8, bw, 16, State.Theme.AccentDim, 109, 4, 0.7 * a)
-            Text(badge, panelX + 20, ry + 10,
-                 State.Theme.Text, 11, FontBold, 110, 0.95 * a)
-
-            -- name
-            Text(entry.Name, panelX + 14 + bw + 10, ry + 8,
-                 State.Theme.Text, 13, FontSystem, 110, 0.95 * a,
-                 panelW - (bw + 40))
-
-            -- kind
-            Text(entry.Kind, panelX + panelW - 90, ry + 9,
-                 State.Theme.TextMuted, 11, FontSystem, 110, 0.7 * a)
-
-            if hover and Input.Click then
-                Input.Click = false
-                -- jump to tab, close spotlight
-                for ti, tab in ipairs(State.Tabs) do
-                    if tab == entry.Tab then
-                        State.ActiveIndex = ti
-                        break
-                    end
-                end
-                CloseSpotlight()
-                return
-            end
-        end
-    end
-
-    -- hint footer
-    Text("Enter to jump  ·  Esc to close  ·  ↑↓ navigate",
-         panelX + 14, panelY + panelH - 20,
-         State.Theme.TextMuted, 11, FontSystem, 110, 0.55 * a)
-
-    -- keyboard nav
-    if Keys.Down.Click then
-        Spotlight.SelectedIndex = math.min(Spotlight.SelectedIndex + 1, #Spotlight.Results)
-        if Spotlight.SelectedIndex - visible >= Spotlight.ScrollTo then
-            Spotlight.ScrollTo = Spotlight.SelectedIndex - visible
-        end
-    end
-    if Keys.Up.Click then
-        Spotlight.SelectedIndex = math.max(Spotlight.SelectedIndex - 1, 1)
-        if Spotlight.SelectedIndex <= Spotlight.ScrollTo then
-            Spotlight.ScrollTo = Spotlight.SelectedIndex - 1
-        end
-    end
-    if Keys.Enter.Click and #Spotlight.Results > 0 then
-        local entry = Spotlight.Results[Spotlight.SelectedIndex]
-        for ti, tab in ipairs(State.Tabs) do
-            if tab == entry.Tab then
-                State.ActiveIndex = ti
-                break
-            end
-        end
-        CloseSpotlight()
-    end
-    if Keys.Escape.Click then
-        CloseSpotlight()
-    end
-
-    -- route typing into the query
-    local result = ProcessText({
-        Value = Spotlight.Query,
-        Caret = Spotlight.Caret,
-        Anchor = Spotlight.Anchor,
-    }, nil, function(v)
-        CloseSpotlight()
-    end)
-    -- ProcessText mutates the field we passed, but it's a temp. Capture it back.
-    -- (We need to re-read to pick up modifications.)
-    -- Since we passed an anonymous table, we re-apply by reading through Focus
-    if Focus.Field then
-        local f = Focus.Field
-        if Spotlight.Query ~= f.Value then
-            Spotlight.Query = f.Value
-            Spotlight.Caret = f.Caret
-            Spotlight.Anchor = f.Anchor
-            RefreshSpotlight()
-        end
-    end
-end
-
--- ============================================================================
---  PART 6 COMPLETE
---  Next: PART 7 -- Notifications, Tooltips, HUD Boxes, Config save/load
--- ============================================================================
-
--- ============================================================================
---  NOTIFICATIONS  --  stacked toast queue, slide-in from right
--- ============================================================================
-
-local Notification = {}
-Notification.__index = Notification
-
-local NoteColors = {
-    info    = { accent = "Accent",   icon = "info"    },
-    success = { accent = "Success",  icon = "success" },
-    warning = { accent = "Warning",  icon = "warning" },
-    error   = { accent = "Danger",   icon = "error"   },
-}
-
-local function Notify(opts)
-    opts = opts or {}
-    local entry = setmetatable({
-        Title    = opts.Title   or "Notice",
-        Content  = opts.Content or "",
-        Type     = opts.Type    or "info",
-        Duration = opts.Duration or 4,
-
-        -- animation
-        Fade     = 0,
-        Slide    = 0,
-        Life     = 0,
-        TargetLife = opts.Duration or 4,
-        Done     = false,
-    }, Notification)
-
-    State.Notifications[#State.Notifications + 1] = entry
-    return entry
-end
-
-local function TickNotifications(dt)
-    local list = State.Notifications
-    local i = 1
-
-    while i <= #list do
-        local n = list[i]
-        n.Life = n.Life + dt
-
-        -- fade in fast, fade out over last 0.4s
-        local remaining = n.TargetLife - n.Life
-        local targetFade, targetSlide
-
-        if n.Life < 0.25 then
-            targetFade = n.Life / 0.25
-            targetSlide = (1 - n.Life / 0.25) * 40
-        elseif remaining < 0.4 then
-            targetFade = math.max(0, remaining / 0.4)
-            targetSlide = (1 - math.max(0, remaining / 0.4)) * 40
-        else
-            targetFade = 1
-            targetSlide = 0
-        end
-
-        n.Fade  = Approach(n.Fade,  targetFade,  18, dt)
-        n.Slide = Approach(n.Slide, targetSlide, 18, dt)
-
-        if n.Life >= n.TargetLife and n.Fade < 0.02 then
-            n.Done = true
-        end
-
-        if n.Done then
-            table.remove(list, i)
-        else
-            i = i + 1
-        end
-    end
-end
-
-local function DrawNotifications()
-    local th = State.Theme
-    local vp = Camera.ViewportSize
-    local notW = 280
-    local notH = 56
-    local gap = 8
-    local baseY = vp.Y - 60
-    local baseX = vp.X - notW - 16
-
-    for i = #State.Notifications, 1, -1 do
-        local n = State.Notifications[i]
-        local a = n.Fade
-        if a > 0.005 then
-            local ny = baseY - (i - 1) * (notH + gap)
-            local nx = baseX + n.Slide
-
-            local colors = NoteColors[n.Type] or NoteColors.info
-            local accent = th[colors.accent] or th.Accent
-
-            -- shadow
-            Rect(nx + 2, ny + 3, notW, notH, Color3.new(0, 0, 0), 200, 10, 0.3 * a)
-
-            -- body
-            Rect(nx, ny, notW, notH, th.Panel, 201, 10, 0.98 * a)
-            Stroke(nx, ny, notW, notH, accent, 202, 10, 0.65 * a)
-
-            -- accent stripe (left)
-            Rect(nx, ny + 6, 3, notH - 12, accent, 203, 1.5, a * 0.95)
-
-            -- icon
-            DrawIconByName(colors.icon, nx + 12, ny + notH / 2 - 8, 16,
-                           accent, 204, a * 0.9)
-
-            -- title
-            Text(n.Title, nx + 38, ny + 10,
-                 th.Text, 13, FontBold, 205, a * 0.98, notW - 48)
-
-            -- content (word-wrapped to 2 lines if needed)
-            if n.Content ~= "" then
-                Text(n.Content, nx + 38, ny + 28,
-                     th.TextDim, 11, FontSystem, 205, a * 0.8, notW - 48)
-            end
-
-            -- progress bar at bottom of card
-            local remain = 1 - (n.Life / n.TargetLife)
-            if remain > 0 and remain < 1 then
-                local barY = ny + notH - 3
-                local barW = (notW - 20) * remain
-                Rect(nx + 10, barY, barW, 1.5, accent, 206, 0.75, a * 0.75)
-            end
-        end
-    end
-end
-
--- ============================================================================
---  TOOLTIPS  --  hover info panel, topmost layer
--- ============================================================================
-
-local Tooltip = {
-    Current = nil,     -- text
-    X = 0, Y = 0,
-    Fade = 0,
-    LastSetAt = 0,
-    Delay = 0.35,
-}
-
-local function WantTooltip(text)
-    if not text or text == "" then return end
-    if Tooltip.Current ~= text then
-        Tooltip.Current = text
-        Tooltip.LastSetAt = os.clock()
-    end
-    Tooltip.X = Input.X
-    Tooltip.Y = Input.Y
-end
-
-local function TickTooltip(dt)
-    local target = 0
-    if Tooltip.Current and (os.clock() - Tooltip.LastSetAt) >= Tooltip.Delay then
-        target = 1
-    end
-
-    Tooltip.Fade = Approach(Tooltip.Fade, target, 18, dt)
-
-    if not Tooltip.Current then
-        Tooltip.Fade = 0
-    end
-end
-
-local function DrawTooltip()
-    if Tooltip.Fade < 0.02 or not Tooltip.Current then return end
-
-    local th = State.Theme
-    local a = Tooltip.Fade
-
-    local text = Tooltip.Current
-    local textW = TextWidth(text, 12, FontSystem)
-    local padX = 10
-    local padY = 6
-    local boxW = textW + padX * 2
-    local boxH = 12 + padY * 2 + 4
-
-    local vp = Camera.ViewportSize
-    local tx = Tooltip.X + 14
-    local ty = Tooltip.Y + 18
-
-    -- flip sides if near right/bottom edges
-    if tx + boxW > vp.X - 8 then
-        tx = Tooltip.X - boxW - 8
-    end
-    if ty + boxH > vp.Y - 8 then
-        ty = Tooltip.Y - boxH - 8
-    end
-
-    -- shadow + body
-    Rect(tx + 2, ty + 3, boxW, boxH, Color3.new(0, 0, 0), 300, 6, 0.28 * a)
-    Rect(tx, ty, boxW, boxH, th.Base, 301, 6, 0.98 * a)
-    Stroke(tx, ty, boxW, boxH, th.Stroke, 302, 6, 0.6 * a)
-
-    Text(text, tx + padX, ty + padY + 1,
-         th.Text, 12, FontSystem, 303, a)
-end
-
-local function ClearTooltip()
-    Tooltip.Current = nil
-    Tooltip.Fade = 0
-end
-
--- ============================================================================
---  HUD BOXES  --  persistent floating info panels, draggable
--- ============================================================================
-
-local HUDBox = {}
-HUDBox.__index = HUDBox
-
-local HUDBoxes = {}
-
-function HUDBox.new(opts)
-    opts = opts or {}
-    local self = setmetatable({
-        Title    = opts.Title or "Box",
-        X        = opts.X or 40,
-        Y        = opts.Y or 40,
-        W        = opts.W or 200,
-        Lines    = {},
-        Visible  = true,
-        Pin      = false,
-        _drag    = nil,
-        _hover   = 0,
-    }, HUDBox)
-    HUDBoxes[#HUDBoxes + 1] = self
-    return self
-end
-
-function HUDBox:SetVisible(v) self.Visible = v and true or false end
-
-function HUDBox:Line(text, color)
-    self.Lines[#self.Lines + 1] = { Text = text, Color = color }
-    return self
-end
-
-function HUDBox:Clear() self.Lines = {} return self end
-
-local function DrawHUDBoxes()
-    local th = State.Theme
-
-    for _, box in ipairs(HUDBoxes) do
-        if box.Visible then
-            local lineH = 16
-            local headerH = 22
-            local padX = 10
-            local padY = 8
-            local contentH = math.max(1, #box.Lines) * lineH
-            local totalH = headerH + contentH + padY
-
-            -- drag
-            if box._drag then
-                if Input.Down then
-                    box.X = Input.X - box._drag.gx
-                    box.Y = Input.Y - box._drag.gy
-                else
-                    box._drag = nil
-                end
-            end
-
-            local hover = MouseIn(box.X, box.Y, box.W, totalH)
-            box._hover = Approach(box._hover, hover and 1 or 0, 16, State.Delta)
-
-            if hover and Input.Click then
-                box._drag = { gx = Input.X - box.X, gy = Input.Y - box.Y }
-                Input.Click = false
-            end
-
-            -- shadow
-            Rect(box.X + 2, box.Y + 3, box.W, totalH,
-                 Color3.new(0, 0, 0), 220, 8, 0.28)
-
-            -- body
-            Rect(box.X, box.Y, box.W, totalH, th.Base, 221, 8, 0.94)
-            Stroke(box.X, box.Y, box.W, totalH, th.Accent, 222, 8,
-                   0.4 + 0.3 * box._hover)
-
-            -- header gradient bar
-            Rect(box.X, box.Y, box.W, headerH, th.Panel, 223, 8, 0.85)
-            GradientRect(box.X + 1, box.Y + 1, box.W - 2, 1.5,
-                         th.AccentA, th.AccentB, 224, 0.6)
-
-            Text(box.Title, box.X + padX, box.Y + 4,
-                 th.Text, 12, FontBold, 225, 0.95,
-                 box.W - padX * 2)
-
-            -- divider
-            Line(box.X + 6, box.Y + headerH,
-                 box.X + box.W - 6, box.Y + headerH,
-                 th.Divider, 224, 1, 0.7)
-
-            -- lines
-            for i, line in ipairs(box.Lines) do
-                local ly = box.Y + headerH + padY + (i - 1) * lineH
-                Text(line.Text, box.X + padX, ly,
-                     line.Color or th.TextDim, 11, FontSystem, 226, 0.9,
-                     box.W - padX * 2)
-            end
-        end
-    end
-end
-
-local function HUDBox_Remove(box)
-    for i, b in ipairs(HUDBoxes) do
-        if b == box then
-            table.remove(HUDBoxes, i)
-            return
-        end
-    end
-end
-
--- ============================================================================
---  CONFIG  --  save/load values keyed by tab+row path
--- ============================================================================
-
-local function BuildPath(tab, row)
-    local tabName = tab and tab.Name or "?"
-    local rowName = row and row.Title or "?"
-    return tabName .. "/" .. rowName
-end
-
-local function CollectConfig()
-    local out = {}
-    for _, tab in ipairs(State.Tabs) do
-        local function walk(container, pathPrefix)
-            for _, row in ipairs(container.Rows or {}) do
-                local path = pathPrefix .. (row.Title or "")
-
-                if getmetatable(row) == Section then
-                    walk(row, path .. "/")
-                elseif getmetatable(row) == InlineRow then
-                    -- inline cells not individually tracked
-                elseif row.Kind == "Toggle" then
-                    out[path] = { k = "Toggle", v = row.Value }
-                elseif row.Kind == "Slider" then
-                    out[path] = { k = "Slider", v = row.Value }
-                elseif row.Kind == "Dropdown" then
-                    out[path] = { k = "Dropdown", v = row.Value }
-                elseif row.Kind == "Keybind" then
-                    out[path] = { k = "Keybind", v = row.Value }
-                elseif row.Kind == "Textbox" then
-                    out[path] = { k = "Textbox", v = row.Value }
-                elseif row.Kind == "RangeSlider" then
-                    out[path] = { k = "RangeSlider", lo = row.Low, hi = row.High }
-                elseif row.Kind == "ColorPicker" then
-                    out[path] = {
-                        k = "ColorPicker",
-                        r = row.Value.R, g = row.Value.G, b = row.Value.B,
-                        a = row._alpha or 1,
-                    }
-                end
-            end
-        end
-        walk(tab, tab.Name .. "/")
-    end
-    return out
-end
-
-local function ApplyConfig(data)
-    if not data then return end
-    for _, tab in ipairs(State.Tabs) do
-        local function walk(container, pathPrefix)
-            for _, row in ipairs(container.Rows or {}) do
-                local path = pathPrefix .. (row.Title or "")
-
-                if getmetatable(row) == Section then
-                    walk(row, path .. "/")
-                else
-                    local entry = data[path]
-                    if entry then
-                        pcall(function()
-                            if entry.k == "Toggle" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Slider" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Dropdown" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Keybind" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Textbox" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "RangeSlider" then
-                                row:SetValue(entry.lo, entry.hi, true)
-                            elseif entry.k == "ColorPicker" then
-                                row:SetValue(Color3.new(entry.r, entry.g, entry.b), true)
-                                row._alpha = entry.a or 1
-                            end
-                        end)
-                    end
-                end
-            end
-        end
-        walk(tab, tab.Name .. "/")
-    end
-end
-
-local function SaveConfig()
-    local data = CollectConfig()
-    local ok, encoded = pcall(function()
-        return HttpService:JSONEncode(data)
-    end)
-    if not ok then return false end
-    local ok2 = pcall(function()
-        writefile(State.ConfigFile, encoded)
-    end)
-    return ok2
-end
-
-local function LoadConfig()
-    local ok, exists = pcall(function() return isfile(State.ConfigFile) end)
-    if not ok or not exists then return false end
-    local ok2, raw = pcall(function() return readfile(State.ConfigFile) end)
-    if not ok2 then return false end
-    local ok3, decoded = pcall(function()
-        return HttpService:JSONDecode(raw)
-    end)
-    if not ok3 or not decoded then return false end
-    ApplyConfig(decoded)
-    return true
-end
 
 -- ============================================================================
 --  PART 7 COMPLETE
@@ -4282,21 +3507,8 @@ local function DrawContent()
         State.Theme.Divider, 60, 1, 0.6)
 
     local headerH = (tab.Subtitle and 42 or 26)
-    local subH = 0
-    if tab.Subs and #tab.Subs > 0 then
-        subH = DrawSubTabs(
-            tab,
-            Geometry.ContentX + Layout.ContentPadX,
-            Geometry.ContentY + headerH,
-            Geometry.ContentW - Layout.ContentPadX * 2
-        )
-    end
-
-    local container = tab
-    if tab.ActiveSub then container = tab.ActiveSub end
-
-    local viewportTop = Geometry.ContentY + headerH + subH + Layout.ContentPadY
-    local viewportH = Geometry.ContentH - (headerH + subH) - Layout.ContentPadY * 2
+    local viewportTop = Geometry.ContentY + headerH + Layout.ContentPadY
+    local viewportH = Geometry.ContentH - headerH - Layout.ContentPadY * 2
 
     local function measureRow(row, x, w, into)
         if row.Hidden then return end
@@ -4323,12 +3535,12 @@ local function DrawContent()
     -- remain full-width and flush the current section row first.
     local acc = { y = 0 }
     local i = 1
-    while i <= #(container.Rows or {}) do
-        local row = container.Rows[i]
+    while i <= #(tab.Rows or {}) do
+        local row = tab.Rows[i]
         if row.Hidden then
             i = i + 1
         elseif IsSection(row) then
-            local nextRow = container.Rows[i + 1]
+            local nextRow = tab.Rows[i + 1]
             local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
 
             if nextRow and not nextRow.Hidden and IsSection(nextRow) then
@@ -4347,17 +3559,17 @@ local function DrawContent()
         end
     end
 
-    container.MaxScroll = math.max(0, acc.y - viewportH)
-    TickScroll(container, State.Delta)
-    HandleWheel(container)
+    tab.MaxScroll = math.max(0, acc.y - viewportH)
+    TickScroll(tab, State.Delta)
+    HandleWheel(tab)
 
-    local cy = viewportTop - container.Scroll
+    local cy = viewportTop - tab.Scroll
     local i = 1
-    while i <= #(container.Rows or {}) do
-        local row = container.Rows[i]
+    while i <= #(tab.Rows or {}) do
+        local row = tab.Rows[i]
         if not row.Hidden then
             if IsSection(row) then
-                local nextRow = container.Rows[i + 1]
+                local nextRow = tab.Rows[i + 1]
                 local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
                 local x1 = Geometry.InnerX
                 local x2 = Geometry.InnerX + halfW + Layout.SectionColumnGap
@@ -4384,7 +3596,7 @@ local function DrawContent()
         end
     end
 
-    DrawScrollbar(container)
+    DrawScrollbar(tab)
 end
 
 -- ============================================================================
@@ -4400,23 +3612,16 @@ local function InputContent()
         return
     end
 
-    local container = tab
-    if tab.ActiveSub then container = tab.ActiveSub end
-
-    local subH = 0
-    if tab.Subs and #tab.Subs > 0 then
-        subH = 24 + Layout.RowGapY
-    end
     local headerH = (tab.Subtitle and 42 or 26)
-    local viewportTop = Geometry.ContentY + headerH + subH + Layout.ContentPadY
-    local cy = viewportTop - container.Scroll
+    local viewportTop = Geometry.ContentY + headerH + Layout.ContentPadY
+    local cy = viewportTop - tab.Scroll
 
     local i = 1
-    while i <= #(container.Rows or {}) do
-        local row = container.Rows[i]
+    while i <= #(tab.Rows or {}) do
+        local row = tab.Rows[i]
         if not row.Hidden then
             if IsSection(row) then
-                local nextRow = container.Rows[i + 1]
+                local nextRow = tab.Rows[i + 1]
                 local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
                 if nextRow and not nextRow.Hidden and IsSection(nextRow) then
                     InputSection(row)
@@ -4627,14 +3832,6 @@ local function Render()
         if hk.Click then ToggleUI() end
     end
 
-    -- spotlight pre-empt
-    if Spotlight.Open then
-        -- reset pool, draw only spotlight at top of everything
-        ResetPool()
-        DrawSpotlight()
-        HideUnused()
-        return
-    end
 
     -- lifecycle
     EnsureWindowFitsTabs()
@@ -4818,7 +4015,7 @@ local function AttachControl(parentType, methodName, ctorName)
     end
 end
 
-for _, parentType in ipairs({ Tab, Section, SubTab }) do
+for _, parentType in ipairs({ Tab, Section }) do
     AttachControl(parentType, "AddLabel",       "Label")
     AttachControl(parentType, "AddDivider",     "Divider")
     AttachControl(parentType, "AddButton",      "Button")
@@ -4831,17 +4028,11 @@ for _, parentType in ipairs({ Tab, Section, SubTab }) do
     AttachControl(parentType, "AddColorPicker", "ColorPicker")
 end
 
-function Tab:AddSubTab(name, icon)
-    return SubTab.new(self, name, icon)
-end
 
 function Tab:AddSection(title, description)
     return Section.new(self, title, description)
 end
 
-function SubTab:AddSection(title, description)
-    return Section.new(self, title, description)
-end
 
 function Tab:AddInline(weights)
     return InlineRow.new(self, weights)
