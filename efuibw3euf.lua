@@ -1661,7 +1661,7 @@ local function DrawStartupFrame()
 
     local startupFade = 1
     if State.Startup.Phase == "pop" then
-        local fadeT = math.min(State.Startup.Time / 0.16, 1)
+        local fadeT = math.min(State.Startup.Time / 0.10, 1)
         startupFade = 1 - fadeT
     end
 
@@ -1702,10 +1702,11 @@ local function TickStartup(dt)
     end
 
     if st.Phase == "pop" then
-        local t = math.min(st.Time / 0.90, 1)
+        -- Seamlessly expand from the exact loading-frame size to the final window.
+        -- No jump/scale snap at the start of the transition.
+        local t = math.min(st.Time / 1.35, 1)
         local eased = StartupEase(t)
-        local overshoot = math.sin(t * math.pi) * 0.014
-        local scale = 0.84 + 0.16 * eased + overshoot
+        local scale = eased
 
         State.W = st.StartW + (st.TargetW - st.StartW) * scale
         State.H = st.StartH + (st.TargetH - st.StartH) * scale
