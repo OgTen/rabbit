@@ -1565,46 +1565,34 @@ local function DrawGlassBorder(th)
     local w, h = State.W, State.H
     local radius = math.min(Layout.Corner, math.max(2, math.min(w, h) / 2 - 1))
 
-    -- ONE visible window edge. Nothing else is drawn around the perimeter.
-    Stroke(x, y, w, h, Color3.new(1, 1, 1), 20, radius, 0.92)
+    -- Bright white outline shared by the loading frame and the main window.
+    Stroke(x, y, w, h, Color3.new(1, 1, 1), 20, radius, 0.88)
 
     if State.NoAnim then
         return
     end
 
-    -- A single colored snake head travels around the white border.
-    -- Its trail is one continuous tapered line rather than a row of dots.
+    -- One colored comet travels around the border. The trail uses the same
+    -- color as the head and fades smoothly toward its tail.
     local straightW = math.max(0, w - radius * 2)
     local straightH = math.max(0, h - radius * 2)
     local perimeter = 2 * straightW + 2 * straightH + 2 * math.pi * radius
     local distance = (os.clock() * 92) % perimeter
-    local trail = mix(th.AccentA, th.AccentB, 0.5)
+    local accent = th.AccentA
 
-    local trailLength = 160
-    local trailSegments = 90
-    local previousX, previousY = GlassBorderPoint(distance, x, y, w, h, radius)
-
-    for i = 1, trailSegments do
-        local progress = i / trailSegments
-        local offset = -trailLength * progress
-        local px, py = GlassBorderPoint(distance + offset,
-                                         x, y, w, h, radius)
-        -- Drawing transparency: 0 = fully visible, 1 = invisible.
-        -- The trail stays bright for most of its length, then fades strongly
-        -- toward the final third of the tail.
-        local fadeStart = 0.45
-        local fade = math.max(0, (progress - fadeStart) / (1 - fadeStart))
-        local alpha = 0.0 + 1.0 * (fade ^ 1.7)
-        local thickness = 10.0 * (1 - progress) ^ 0.65
-
-        Line(previousX, previousY, px, py, trail, 20 + i,
-             math.max(1.5, thickness), alpha)
-
-        previousX, previousY = px, py
+    local trailCount = 9
+    local trailLength = 34
+    for i = trailCount, 1, -1 do
+        local t = i / trailCount
+        local trailDistance = distance - trailLength * t
+        local trailX, trailY = GlassBorderPoint(trailDistance, x, y, w, h, radius)
+        local trailAlpha = 0.05 + (1 - t) * 0.40
+        local trailSize = 1.0 + (1 - t) * 1.5
+        Circle(trailX, trailY, trailSize, accent, 21 + i, true, 1, 12, trailAlpha)
     end
 
     local headX, headY = GlassBorderPoint(distance, x, y, w, h, radius)
-    Circle(headX, headY, 7.5, trail, 150, true, 1, 32, 0.0)
+    Circle(headX, headY, 2.8, accent, 32, true, 1, 16, 1)
 end
 
 local function DrawFrame()
@@ -1624,7 +1612,7 @@ local function DrawFrame()
     -- Internal structure only.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         Color3.new(1, 1, 1), 14, 1, 0.78)
+         Color3.new(1, 1, 1), 14, 1, 0.52)
 
     -- Keep the vertical separator exactly one sidebar-section padding unit
     -- to the right of the detached section, matching the 10px left inset.
@@ -1635,7 +1623,7 @@ local function DrawFrame()
 
     Line(separatorX, Geometry.RailY + 1,
          separatorX, State.Y + State.H - 2,
-         Color3.new(1, 1, 1), 14, 1, 0.72)
+         Color3.new(1, 1, 1), 14, 1, 0.52)
 
     -- Footer is part of the same glass surface as the main window.
     -- Do not draw another surface here; the pane underneath already provides
@@ -1643,7 +1631,7 @@ local function DrawFrame()
     local footerY = State.Y + State.H - Geometry.FooterH
     Line(State.X + Layout.Corner, footerY,
          State.X + State.W - Layout.Corner, footerY,
-         Color3.new(1, 1, 1), 16, 1, 0.72)
+         Color3.new(1, 1, 1), 16, 1, 0.52)
 
     -- Single animated glass edge.
     DrawGlassBorder(th)
@@ -1695,7 +1683,7 @@ local function DrawStartupFrame()
     local barX = x + (w - barW) / 2
     local barY = y + h - 12
 
-    Rect(barX, barY, barW, barH, Color3.new(1, 1, 1), 30, 2, 0.42)
+    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
     if State.Startup.Progress > 0 then
         Rect(barX, barY,
              math.max(1, barW * State.Startup.Progress),
