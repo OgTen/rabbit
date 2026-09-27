@@ -1109,6 +1109,11 @@ local State = {
         RevealDuration = 0.85,
         StartX = 0, StartY = 0, StartW = 0, StartH = 0,
         TargetX = 0, TargetY = 0, TargetW = 0, TargetH = 0,
+        LogoURL = nil,
+        LogoData = nil,
+        LogoImage = nil,
+        LogoLoading = false,
+        LogoFailed = false,
     },
 
     -- global animation toggle
@@ -1643,48 +1648,127 @@ local function StartupEase(t)
     return 1 - (f * f * f) / 2
 end
 
+local function EnsureStartupLogo(url)
+    local st = State.Startup
+    if not url or url == "" then return end
+    if st.LogoURL == url and (st.LogoLoading or st.LogoData or st.LogoFailed) then
+        return
+    end
+
+    st.LogoURL = url
+    st.LogoData = nil
+    st.LogoFailed = false
+    st.LogoLoading = true
+
+    task.spawn(function()
+        local ok, data = pcall(function()
+            return game:HttpGet(url)
+        end)
+
+        if not State.Alive or State.Startup.LogoURL ~= url then
+            return
+        end
+
+        if ok and type(data) == "string" and #data > 0 then
+            State.Startup.LogoData = data
+        else
+            State.Startup.LogoFailed = true
+        end
+        State.Startup.LogoLoading = false
+    end)
+end
+
+local function ClearStartupLogo()
+    local st = State.Startup
+    if st.LogoImage then
+        pcall(function() st.LogoImage:Remove() end)
+        st.LogoImage = nil
+    end
+end
+
 local function DrawStartupFrame()
     local th = State.Theme
     local x, y, w, h = State.X, State.Y, State.W, State.H
     local accent = th.Accent
     local textColor = th.Text
-    local muted = th.SubText
 
-    -- This is the SAME glass pane used by the normal interface.
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
     DrawGlassBorder(th)
 
+    local st = State.Startup
+    local progress = st.Progress
     local cx = x + w / 2
-    local contentW = math.min(300, math.max(180, w - 44))
+
+    -- The showcase/API can provide any direct image URL. Matcha's Image drawing
+    -- object accepts the raw bytes returned by game:HttpGet.
+    EnsureStartupLogo(st.LogoURL)
+
+    local logoSize = math.min(76, math.max(62, h * 0.54))
+    local logoX = cx - logoSize / 2 - 48
+    local logoY = y + math.max(8, (h - logoSize) / 2 - 7)
+
+    local logoVisible = 1
+    local titleVisible = 1
+    if st.Phase == "pop" then
+        local fadeT = math.min(st.Time / 0.18, 1)
+        logoVisible = 1 - fadeT
+        titleVisible = 1 - fadeT
+    end
+
+    if st.LogoData and not st.LogoImage then
+        local ok, image = pcall(function()
+            local obj = Drawing.new("Image")
+            obj.Data = st.LogoData
+            obj.Size = Vector2.new(logoSize, logoSize)
+            obj.Position = Vector2.new(logoX, logoY)
+            obj.Transparency = 1
+            obj.Visible = true
+            obj.ZIndex = 32
+            pcall(function() obj.Rounding = 10 end)
+            return obj
+        end)
+        if ok then
+            st.LogoImage = image
+        else
+            st.LogoFailed = true
+        end
+        st.LogoData = nil
+    end
+
+    if st.LogoImage then
+        st.LogoImage.Size = Vector2.new(logoSize, logoSize)
+        st.LogoImage.Position = Vector2.new(logoX, logoY)
+        st.LogoImage.Transparency = logoVisible
+        st.LogoImage.Visible = true
+    else
+        local fallback = math.min(54, logoSize - 8)
+        local fx = cx - fallback / 2 - 48
+        local fy = y + (h - fallback) / 2 - 5
+        Rect(fx, fy, fallback, fallback, accent, 30, 5, 0.18 * logoVisible)
+        Stroke(fx, fy, fallback, fallback, accent, 31, 5, 0.55 * logoVisible)
+        TextCenter("S", fx + fallback / 2, fy + 9, accent, 22, FontBold, 32, logoVisible)
+    end
+
+    -- The title begins against the logo and slides out to the right as the
+    -- image becomes established.
+    local title = "SHADOW UI"
+    local titleSize = 18
+    local titleW = TextWidth(title, titleSize, FontBold)
+    local titleBaseX = logoX + logoSize + 12
+    local titleSlide = math.min(1, math.max(0, st.Time / 0.55))
+    titleSlide = titleSlide * titleSlide * (3 - 2 * titleSlide)
+    local titleX = titleBaseX + (1 - titleSlide) * 22
+    Text(title, titleX, y + h / 2 - titleSize / 2 + 1, textColor, titleSize, FontBold, 32, titleVisible, titleW + 2)
+
+    -- Loading bar remains independent underneath the branding.
+    local barW = math.min(220, math.max(170, w - 56))
     local barH = 4
-    local barX = cx - contentW / 2
-    local barY = y + h - 30
-    local progress = State.Startup.Progress
-
-    local startupFade = 1
-    if State.Startup.Phase == "pop" then
-        local fadeT = math.min(State.Startup.Time / 0.18, 1)
-        startupFade = 1 - fadeT
-    end
-
-    local markSize = math.min(30, math.max(22, h * 0.22))
-    local titleSize = math.min(18, math.max(14, h * 0.115))
-    local titleGap = 10
-    local totalW = markSize + titleGap + TextWidth("SHADOW UI", titleSize, 2)
-    local markX = cx - totalW / 2
-    local markY = y + h * 0.27
-
-    Rect(markX, markY, markSize, markSize, accent, 30, 5, 0.18 * startupFade)
-    Stroke(markX, markY, markSize, markSize, accent, 31, 5, 0.55 * startupFade)
-    TextCenter("S", markX + markSize / 2, markY + 5, accent, titleSize + 1, 2, 32, startupFade)
-    Text("SHADOW UI", markX + markSize + titleGap, markY + 4, textColor, titleSize, 2, 32, startupFade, nil, false)
-    TextCenter("Initializing interface...", cx, markY + markSize + 9, muted, 11, 2, 32, startupFade)
-
-    Rect(barX, barY, contentW, barH, th.Divider, 30, 2, 0.42)
+    local barX = cx - barW / 2
+    local barY = y + h - 16
+    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
     if progress > 0 then
-        Rect(barX, barY, math.max(1, contentW * progress), barH, accent, 31, 2, 0.95)
+        Rect(barX, barY, math.max(1, barW * progress), barH, accent, 31, 2, 0.95)
     end
-    TextCenter(tostring(math.floor(progress * 100)) .. "%", cx, barY + 8, muted, 10, 2, 32, startupFade)
 end
 
 local function TickStartup(dt)
@@ -1745,13 +1829,18 @@ local function StartStartup(opts)
     st.Progress = 0
     st.RevealProgress = 0
     st.Phase = "loading"
+    st.LogoURL = opts.logo or opts.Logo or st.LogoURL
+    st.LogoData = nil
+    st.LogoFailed = false
+    st.LogoLoading = false
+    ClearStartupLogo()
     st.Active = true
 
     st.TargetW, st.TargetH = State.W, State.H
     st.TargetX, st.TargetY = State.X, State.Y
 
-    st.StartW = math.min(300, math.max(270, st.TargetW * 0.42))
-    st.StartH = math.min(112, math.max(100, st.TargetH * 0.225))
+    st.StartW = math.min(320, math.max(300, st.TargetW * 0.44))
+    st.StartH = math.min(132, math.max(116, st.TargetH * 0.245))
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
@@ -4583,6 +4672,15 @@ ShadowUI.Layout         = Layout
 ShadowUI.State          = State
 ShadowUI.Tabs           = {}
 
+-- window --------------------------------------------------------------------
+-- Configure and start the single Shadow UI window. `logo` accepts any direct
+-- image URL whose bytes can be fetched with game:HttpGet.
+function ShadowUI:CreateWindow(opts)
+    opts = opts or {}
+    self:StartStartup(opts)
+    return self
+end
+
 -- tabs ----------------------------------------------------------------------
 function ShadowUI:AddTab(opts)
     opts = opts or {}
@@ -4647,6 +4745,7 @@ function ShadowUI:Destroy()
     State.Alive = false
     pcall(function() SaveConfig() end)
     ClearPool()
+    ClearStartupLogo()
     ClearFocus()
     CancelCapture()
     _G.ShadowUI = nil
