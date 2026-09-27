@@ -1716,9 +1716,14 @@ local function DrawStartupBranding()
 
     -- Keep the branding visible during loading, then fade it away smoothly
     -- as the same window begins expanding.
+    -- Library alpha values are passed directly to Drawing.Transparency.
+    -- 0 = hidden and 1 = fully visible in the existing Shadow UI renderer.
+    -- Keep branding fully visible while loading, then fade it to zero as the
+    -- same frame starts expanding.
     local brandingFade = 1
     if st.Phase == "pop" then
-        brandingFade = 1 - math.min(st.Time / 0.42, 1)
+        local t = math.min(st.Time / 0.42, 1)
+        brandingFade = 1 - t
         brandingFade = brandingFade * brandingFade * (3 - 2 * brandingFade)
     elseif st.Phase == "reveal" or st.Phase == "done" then
         brandingFade = 0
@@ -1743,12 +1748,13 @@ local function DrawStartupBranding()
         local raw = st.LogoData
         local ok, image = pcall(function()
             local obj = Drawing.new("Image")
-            obj.Data = raw
-            obj.ZIndex = 34
+            obj.ZIndex = 60
             obj.Position = Vector2.new(groupX, logoY)
             obj.Size = Vector2.new(logoSize, logoSize)
+            pcall(function() obj.Rounding = 5 end)
             obj.Transparency = 0
             obj.Visible = true
+            obj.Data = raw
             return obj
         end)
         if ok and image then
@@ -1766,8 +1772,8 @@ local function DrawStartupBranding()
         st.LogoImage.Size = Vector2.new(logoSize, logoSize)
         -- Matcha Drawing transparency: 0 = opaque, 1 = invisible.
         -- Keep the logo visible until the full window is ready.
-        st.LogoImage.Transparency = 0
-        st.LogoImage.Visible = true
+        st.LogoImage.Transparency = 1 - fade
+        st.LogoImage.Visible = fade > 0.001
     else
         Rect(groupX, logoY, logoSize, logoSize, accent, 34, 5, 0.18 * fade)
         Stroke(groupX, logoY, logoSize, logoSize, accent, 35, 5, 0.55 * fade)
