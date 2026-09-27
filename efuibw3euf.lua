@@ -278,7 +278,7 @@ local function Rect(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Stroke(x, y, w, h, color, z, corner, alpha)
@@ -294,7 +294,7 @@ local function Stroke(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
@@ -308,7 +308,7 @@ local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
@@ -324,7 +324,7 @@ local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
@@ -339,7 +339,7 @@ local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Bar(x1, y1, x2, y2, thickness, color, z, alpha)
@@ -383,7 +383,7 @@ local function Text(text, x, y, color, size, font, z, alpha, room, center)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function TextCenter(text, cx, y, color, size, font, z, alpha, room)
@@ -1435,24 +1435,19 @@ end
 local function DrawFrame()
     local th = State.Theme
 
-    -- One continuous frosted-glass surface. Do not split the pane into
-    -- upper/lower rectangles: Drawing layers cannot blur the game scene,
-    -- so the frosted effect is created by a single translucent dark tint
-    -- plus a very subtle highlight.
+    -- One continuous translucent glass pane. The existing Matcha transparency
+    -- convention is preserved for every primitive, so text and controls keep
+    -- their original visibility. Only the main pane is given the glass tint.
     Rect(State.X, State.Y, State.W, State.H,
-         rgb(18, 21, 30), 10, Layout.Corner, 0.46)
+         rgb(18, 21, 30), 10, Layout.Corner, 0.52)
 
-    -- A second full-surface wash adds depth without creating a visible seam.
-    Rect(State.X, State.Y, State.W, State.H,
-         mix(th.Base, Color3.new(255 / 255, 255 / 255, 255 / 255), 0.035),
-         11, Layout.Corner, 0.08)
-
-    -- Very subtle acrylic reflection along the top edge.
+    -- A restrained top reflection. This follows the same outer silhouette and
+    -- does not create a second panel or a horizontal split.
     Rect(State.X + Layout.Corner, State.Y + 1,
          math.max(1, State.W - Layout.Corner * 2), 1,
-         Color3.new(1, 1, 1), 12, 0, 0.10)
+         Color3.new(1, 1, 1), 12, 0, 0.12)
 
-    -- Internal structure only. No secondary background shells.
+    -- Internal structure only.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
          th.Divider, 14, 1, 0.24)
@@ -1461,7 +1456,7 @@ local function DrawFrame()
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
          th.Divider, 14, 1, 0.20)
 
-    -- Keep the single animated glass edge on top.
+    -- Single animated glass edge.
     DrawGlassBorder(th)
 end
 
