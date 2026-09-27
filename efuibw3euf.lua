@@ -1103,7 +1103,7 @@ local State = {
         Active = false,
         Phase = "idle",
         Time = 0,
-        Duration = 2.0,
+        Duration = 5.0,
         Progress = 0,
         RevealProgress = 0,
         RevealDuration = 0.85,
@@ -1650,18 +1650,24 @@ local function DrawStartupFrame()
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
     DrawGlassBorder(th)
 
-    -- Static startup title. No logo and no text animation.
+    -- Centered startup title with a short fade/slide-in from the left.
     local title = "SHADOW UI"
     local titleSize = 16
     local titleW = TextWidth(title, titleSize, FontBold)
+    local titleProgress = math.min(State.Startup.Time / 0.65, 1)
+    local titleEase = titleProgress * titleProgress * (3 - 2 * titleProgress)
+    local titleOffset = (1 - titleEase) * 28
+    local titleAlpha = titleEase
+    local titleX = x + (w - titleW) / 2 - titleOffset
+    local titleY = y + 18
     Text(title,
-         x + (w - titleW) / 2,
-         y + 12,
+         titleX,
+         titleY,
          th.Text,
          titleSize,
          FontBold,
          32,
-         1,
+         titleAlpha,
          titleW + 2,
          false)
 
@@ -1771,23 +1777,6 @@ local function DrawTitleBar(title)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
     local cxLeft = State.X + 14
-
-    -- brand mark: slightly larger left-corner logo
-    local markSize = 26
-    local markX = cxLeft
-    local markY = cy - markSize / 2
-
-    Rect(markX, markY, markSize, markSize,
-         th.Accent, 30, 5, 0.18)
-    Stroke(markX, markY, markSize, markSize,
-           th.Accent, 31, 5, 0.55)
-
-    local letter = string.upper(string.sub(title, 1, 1))
-    local logoTextSize = 14
-    local letterW = TextWidth(letter, logoTextSize, FontBold)
-    Text(letter, markX + markSize / 2 - letterW / 2,
-         markY + (markSize - logoTextSize) / 2,
-         th.Accent, logoTextSize, FontBold, 32, 1)
 
     -- centered window title
     local titleSize = 15
@@ -4590,7 +4579,7 @@ function ShadowUI:CreateWindow(opts)
     if opts.Height then State.H = math.max(Layout.WindowMinH, tonumber(opts.Height) or State.H) end
     if opts.MenuKey then State.MenuKey = string.lower(tostring(opts.MenuKey)) end
     StartStartup({
-        Duration = opts.StartupDuration or opts.Duration or 2.0,
+        Duration = opts.StartupDuration or opts.Duration or 5.0,
     })
     return self
 end
