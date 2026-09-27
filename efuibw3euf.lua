@@ -1594,17 +1594,18 @@ local function DrawGlassBorder(th)
         -- toward the final third of the tail.
         local fade = math.max(0, (progress - 0.62) / 0.38)
         local alpha = 0.015 + 0.93 * (fade ^ 1.45)
-        local thickness = 11.0 * (1 - progress) ^ 0.52
+        local thickness = 14.0 * (1 - progress) ^ 0.48
 
         Line(previousX, previousY, px, py, trail, 20 + i,
-             math.max(1.5, thickness), alpha)
+             math.max(2.5, thickness), alpha)
 
         previousX, previousY = px, py
     end
 
     local headX, headY = GlassBorderPoint(distance, x, y, w, h, radius)
-    Circle(headX, headY, 7.5, trail, 150, true, 1, 24, 0.01)
-    Circle(headX, headY, 1.9, Color3.new(1, 1, 1), 151, true, 1, 14, 0.01)
+    Circle(headX, headY, 15, trail, 148, true, 1, 32, 0.18)
+    Circle(headX, headY, 11, trail, 150, true, 1, 28, 0.01)
+    Circle(headX, headY, 4.0, Color3.new(1, 1, 1), 151, true, 1, 20, 0.01)
 end
 
 local function DrawFrame()
