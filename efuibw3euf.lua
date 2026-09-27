@@ -1607,6 +1607,11 @@ local function DrawTabRail()
     local openAmt = State.RailOpen
     local railW = Geometry.RailW
 
+    -- Solid sidebar surface. This sits inside the main glass shell and only
+    -- covers the navigation rail, leaving the content area translucent.
+    Rect(Geometry.RailX, Geometry.RailY, Geometry.RailW, Geometry.RailH,
+         rgb(12, 15, 23), 35, 0, 0.92)
+
     local rowY = Geometry.RailY + 12
     local padX = 8
     local rowH = Layout.TabRowH
