@@ -1710,7 +1710,13 @@ local function DrawTabRail()
         if not tab.Hidden then
             local x = sectionX + padX
             local y = rowY
-            local w = math.max(1, sectionW - padX * 2)
+
+            -- The tab itself grows continuously with the sidebar animation.
+            -- This keeps the navigation feeling like one connected motion
+            -- instead of making the cards snap between collapsed/expanded sizes.
+            local narrowTabW = math.max(1, Layout.TabRailNarrow - padX * 2)
+            local wideTabW = math.max(1, math.max(Layout.TabRailW, math.floor(State.W * 0.22)) - padX * 2)
+            local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
             local hover = MouseIn(x, y, w, rowH)
             local active = (State.ActiveIndex == i)
@@ -1742,12 +1748,12 @@ local function DrawTabRail()
             -- icon column. When the rail is collapsed there is no label, so
             -- center the icon in the entire tab instead of leaving it offset
             -- toward the old label position.
-            local iconX
-            if openAmt < 0.5 then
-                iconX = x + math.max(0, (w - iconSize) / 2)
-            else
-                iconX = x + 11
-            end
+            -- Interpolate the icon position continuously. In the collapsed
+            -- state it is centered; as the rail opens it glides smoothly into
+            -- the expanded left-aligned position instead of jumping at 50%.
+            local centeredIconX = x + math.max(0, (narrowTabW - iconSize) / 2)
+            local expandedIconX = x + 11
+            local iconX = centeredIconX + (expandedIconX - centeredIconX) * openAmt
             local iconY = y + (rowH - iconSize) / 2
             local iconAlpha = 0.55 + 0.45 * math.max(tab.Glow, tab.Hover)
             local iconColor = tab.Glow > 0.5 and th.Accent or th.TextDim
