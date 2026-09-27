@@ -1645,9 +1645,22 @@ end
 
 local function DrawStartupFrame()
     local th = State.Theme
-    local x, y, w, h = State.X, State.Y, State.W, State.H
+    local st = State.Startup
+
+    -- The loading frame is always exactly 80px tall.
+    local x = st.StartX
+    local y = st.StartY
+    local w = st.StartW
+    local h = 80
+
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
+
+    -- Draw the border against the exact startup dimensions rather than the
+    -- normal window dimensions.
+    local oldX, oldY, oldW, oldH = State.X, State.Y, State.W, State.H
+    State.X, State.Y, State.W, State.H = x, y, w, h
     DrawGlassBorder(th)
+    State.X, State.Y, State.W, State.H = oldX, oldY, oldW, oldH
 end
 
 local function TickStartup(dt)
@@ -1737,25 +1750,6 @@ local TitleButtons = {
 local function DrawTitleBar(title)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
-    local cxLeft = State.X + 14
-
-    -- brand mark: slightly larger left-corner logo
-    local markSize = 26
-    local markX = cxLeft
-    local markY = cy - markSize / 2
-
-    Rect(markX, markY, markSize, markSize,
-         th.Accent, 30, 5, 0.18)
-    Stroke(markX, markY, markSize, markSize,
-           th.Accent, 31, 5, 0.55)
-
-    local letter = string.upper(string.sub(title, 1, 1))
-    local logoTextSize = 14
-    local letterW = TextWidth(letter, logoTextSize, FontBold)
-    Text(letter, markX + markSize / 2 - letterW / 2,
-         markY + (markSize - logoTextSize) / 2,
-         th.Accent, logoTextSize, FontBold, 32, 1)
-
     -- centered window title
     local titleSize = 15
     local titleW = TextWidth(title, titleSize, FontBold)
@@ -4434,6 +4428,13 @@ local function Render()
     local startupIsReveal = State.Startup.Active and State.Startup.Phase == "reveal"
 
     if startupIsLoading then
+        -- Lock the startup geometry for the entire loading phase.
+        -- Nothing else is allowed to restore the normal window height here.
+        State.X = State.Startup.StartX
+        State.Y = State.Startup.StartY
+        State.W = State.Startup.StartW
+        State.H = 80
+
         Geometry.Recalculate()
         ResetPool()
         DrawStartupFrame()
