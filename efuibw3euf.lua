@@ -304,6 +304,26 @@ local function SolidSurface(x, y, w, h, color, z, corner)
     if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
+-- Dark translucent surface used for detached panels that should feel like
+-- frosted glass instead of a separate solid block.
+local FrostedSurfaceAlpha = 0.48
+
+local function FrostedSurface(x, y, w, h, color, z, corner)
+    if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
+    local o, l = Take("Square")
+    local depth = Layer(z)
+
+    if l.X ~= x or l.Y ~= y then l.X, l.Y = x, y; o.Position = Vector2.new(x, y) end
+    if l.W ~= w or l.H ~= h then l.W, l.H = w, h; o.Size = Vector2.new(w, h) end
+    if l.Color ~= color then l.Color = color; o.Color = color end
+    if not l.Filled then l.Filled = true; o.Filled = true end
+    if l.Corner ~= corner then l.Corner = corner; o.Corner = corner end
+    if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
+
+    local a = FrostedSurfaceAlpha * FrameAlpha
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+end
+
 local function Rect(x, y, w, h, color, z, corner, alpha)
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
     local o, l = Take("Square")
@@ -1767,8 +1787,13 @@ local function DrawTabRail()
     local sectionW = math.max(40, railW - sectionPadX - sectionPadX)
     local sectionH = math.max(44, railH - 10)
 
-    SolidSurface(sectionX, sectionY, sectionW, sectionH,
-                 rgb(16, 19, 28), 36, 12)
+    -- Frosted sidebar: let the main glass pane subtly show through instead
+    -- of using a fully opaque block. The faint outline keeps the detached
+    -- section readable without competing with the pill tabs.
+    FrostedSurface(sectionX, sectionY, sectionW, sectionH,
+                   rgb(14, 18, 27), 36, 12)
+    Stroke(sectionX, sectionY, sectionW, sectionH,
+           th.Stroke, 37, 12, 0.28)
 
     local rowY = sectionY + 11
     local padX = 8
