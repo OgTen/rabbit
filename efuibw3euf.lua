@@ -1633,10 +1633,17 @@ local function TickRailOpen(dt)
     local sectionPadLeft = 10
     local sectionPadRight = 10
     local sectionPadY = 5
-    local sectionX = Geometry.RailX + sectionPadLeft
-    local sectionY = Geometry.RailY + sectionPadY
-    local sectionW = math.max(40, Geometry.RailW - sectionPadLeft - sectionPadRight)
-    local sectionH = math.max(44, Geometry.RailH - 10)
+    -- Use the live window position as a safe fallback if derived rail geometry
+    -- has not been populated yet on this render callback.
+    local railX = Geometry.RailX or State.X
+    local railY = Geometry.RailY or (State.Y + Layout.TopbarH)
+    local railW = Geometry.RailW or Layout.TabRailNarrow
+    local railH = Geometry.RailH or math.max(1, State.H - Layout.TopbarH - Geometry.FooterH)
+
+    local sectionX = railX + sectionPadLeft
+    local sectionY = railY + sectionPadY
+    local sectionW = math.max(40, railW - sectionPadLeft - sectionPadRight)
+    local sectionH = math.max(44, railH - 10)
 
     local overSidebar = MouseIn(sectionX, sectionY, sectionW, sectionH)
 
