@@ -1659,6 +1659,12 @@ local function DrawStartupFrame()
     local barY = y + h - 30
     local progress = State.Startup.Progress
 
+    local startupFade = 1
+    if State.Startup.Phase == "pop" then
+        local fadeT = math.min(State.Startup.Time / 0.16, 1)
+        startupFade = 1 - fadeT
+    end
+
     local markSize = math.min(30, math.max(22, h * 0.22))
     local titleSize = math.min(18, math.max(14, h * 0.115))
     local titleGap = 10
@@ -1666,17 +1672,17 @@ local function DrawStartupFrame()
     local markX = cx - totalW / 2
     local markY = y + h * 0.27
 
-    Rect(markX, markY, markSize, markSize, accent, 30, 5, 0.18)
-    Stroke(markX, markY, markSize, markSize, accent, 31, 5, 0.55)
-    TextCenter("S", markX + markSize / 2, markY + 5, accent, titleSize + 1, 2, 32, 1)
-    Text("SHADOW UI", markX + markSize + titleGap, markY + 4, textColor, titleSize, 2, 32, 1, nil, false)
-    TextCenter("Initializing interface...", cx, markY + markSize + 9, muted, 11, 2, 32, 1)
+    Rect(markX, markY, markSize, markSize, accent, 30, 5, 0.18 * startupFade)
+    Stroke(markX, markY, markSize, markSize, accent, 31, 5, 0.55 * startupFade)
+    TextCenter("S", markX + markSize / 2, markY + 5, accent, titleSize + 1, 2, 32, startupFade)
+    Text("SHADOW UI", markX + markSize + titleGap, markY + 4, textColor, titleSize, 2, 32, startupFade, nil, false)
+    TextCenter("Initializing interface...", cx, markY + markSize + 9, muted, 11, 2, 32, startupFade)
 
     Rect(barX, barY, contentW, barH, th.Divider, 30, 2, 0.42)
     if progress > 0 then
         Rect(barX, barY, math.max(1, contentW * progress), barH, accent, 31, 2, 0.95)
     end
-    TextCenter(tostring(math.floor(progress * 100)) .. "%", cx, barY + 8, muted, 10, 2, 32, 1)
+    TextCenter(tostring(math.floor(progress * 100)) .. "%", cx, barY + 8, muted, 10, 2, 32, startupFade)
 end
 
 local function TickStartup(dt)
@@ -1696,9 +1702,9 @@ local function TickStartup(dt)
     end
 
     if st.Phase == "pop" then
-        local t = math.min(st.Time / 0.48, 1)
+        local t = math.min(st.Time / 0.90, 1)
         local eased = StartupEase(t)
-        local overshoot = math.sin(t * math.pi) * 0.018
+        local overshoot = math.sin(t * math.pi) * 0.014
         local scale = 0.84 + 0.16 * eased + overshoot
 
         State.W = st.StartW + (st.TargetW - st.StartW) * scale
