@@ -278,7 +278,7 @@ local function Rect(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Stroke(x, y, w, h, color, z, corner, alpha)
@@ -294,7 +294,7 @@ local function Stroke(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
@@ -308,7 +308,7 @@ local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
@@ -324,7 +324,7 @@ local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
@@ -339,7 +339,7 @@ local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Bar(x1, y1, x2, y2, thickness, color, z, alpha)
@@ -383,7 +383,7 @@ local function Text(text, x, y, color, size, font, z, alpha, room, center)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function TextCenter(text, cx, y, color, size, font, z, alpha, room)
