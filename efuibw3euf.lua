@@ -133,6 +133,7 @@ local Layout = {
 
     -- tab / section
     TabRowH         = 34,
+    TabGap          = 7,
     TabIcon         = 16,
     SectionH        = 22,
     SectionGap      = 8,
@@ -265,6 +266,44 @@ end
 
 local FrameAlpha = 1  -- global fade multiplier used during open/close
 
+-- Dedicated surface renderer for the main glass pane. This deliberately does
+-- not share the normal Rect() alpha value, so changing the glass strength
+-- cannot alter buttons, sliders, overlays, text, or other controls.
+local GlassSurfaceAlpha = 0.85
+
+local function GlassSurface(x, y, w, h, color, z, corner)
+    if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
+    local o, l = Take("Square")
+    local depth = Layer(z)
+
+    if l.X ~= x or l.Y ~= y then l.X, l.Y = x, y; o.Position = Vector2.new(x, y) end
+    if l.W ~= w or l.H ~= h then l.W, l.H = w, h; o.Size = Vector2.new(w, h) end
+    if l.Color ~= color then l.Color = color; o.Color = color end
+    if not l.Filled then l.Filled = true; o.Filled = true end
+    if l.Corner ~= corner then l.Corner = corner; o.Corner = corner end
+    if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
+
+    local a = GlassSurfaceAlpha * FrameAlpha
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+end
+
+local function SolidSurface(x, y, w, h, color, z, corner)
+    if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
+    local o, l = Take("Square")
+    local depth = Layer(z)
+
+    if l.X ~= x or l.Y ~= y then l.X, l.Y = x, y; o.Position = Vector2.new(x, y) end
+    if l.W ~= w or l.H ~= h then l.W, l.H = w, h; o.Size = Vector2.new(w, h) end
+    if l.Color ~= color then l.Color = color; o.Color = color end
+    if not l.Filled then l.Filled = true; o.Filled = true end
+    if l.Corner ~= corner then l.Corner = corner; o.Corner = corner end
+    if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
+
+    -- Fully solid surface. Only the normal window fade can reduce it.
+    local a = FrameAlpha
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+end
+
 local function Rect(x, y, w, h, color, z, corner, alpha)
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
     local o, l = Take("Square")
@@ -278,7 +317,7 @@ local function Rect(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Stroke(x, y, w, h, color, z, corner, alpha)
@@ -294,7 +333,7 @@ local function Stroke(x, y, w, h, color, z, corner, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
@@ -308,7 +347,7 @@ local function Line(x1, y1, x2, y2, color, z, thickness, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
@@ -324,7 +363,7 @@ local function Circle(x, y, radius, color, z, filled, thickness, sides, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
@@ -339,7 +378,7 @@ local function Triangle(ax, ay, bx, by, cx, cy, color, z, alpha)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function Bar(x1, y1, x2, y2, thickness, color, z, alpha)
@@ -383,7 +422,7 @@ local function Text(text, x, y, color, size, font, z, alpha, room, center)
     if l.Depth ~= depth then l.Depth = depth; o.ZIndex = depth end
 
     local a = (alpha or 1) * FrameAlpha
-    if l.Alpha ~= a then l.Alpha = a; o.Transparency = 1 - a end
+    if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
 end
 
 local function TextCenter(text, cx, y, color, size, font, z, alpha, room)
@@ -1079,7 +1118,14 @@ end
 --  WINDOW GEOMETRY  --  derived every frame from State.X/Y/W/H
 -- ============================================================================
 
-local Geometry = {}
+local Geometry = {
+    FooterH = 10,
+    X = 0, Y = 0, W = 0, H = 0,
+    TopY = 0, TopH = 0,
+    RailX = 0, RailY = 0, RailW = 0, RailH = 0,
+    ContentX = 0, ContentY = 0, ContentW = 0, ContentH = 0,
+    InnerX = 0, InnerY = 0, InnerW = 0, InnerH = 0,
+}
 
 function Geometry.Recalculate()
     Geometry.X = State.X
@@ -1094,7 +1140,9 @@ function Geometry.Recalculate()
     -- tab rail (left side)
     Geometry.RailX = State.X
     Geometry.RailY = State.Y + Geometry.TopH
-    Geometry.RailH = State.H - Geometry.TopH
+    -- Reserve a compact footer strip at the bottom of the window.
+    Geometry.FooterH = 10
+    Geometry.RailH = math.max(1, State.H - Geometry.TopH - Geometry.FooterH)
 
     local wide = math.max(Layout.TabRailW, math.floor(State.W * 0.22))
     local open = State.RailOpen
@@ -1112,6 +1160,10 @@ function Geometry.Recalculate()
     Geometry.InnerW = Geometry.ContentW - Layout.ContentPadX * 2 - Layout.ScrollbarW
     Geometry.InnerH = Geometry.ContentH - Layout.ContentPadY * 2
 end
+
+-- Prime derived geometry once so an executor cannot enter the render callback
+-- with an entirely uninitialized geometry table.
+Geometry.Recalculate()
 
 -- ============================================================================
 --  TABS  --  structural data
@@ -1435,21 +1487,35 @@ end
 local function DrawFrame()
     local th = State.Theme
 
-    -- Solid window surface. No glass transparency or layered frosted fills.
-    -- The entire UI uses one unified outer silhouette.
-    Rect(State.X, State.Y, State.W, State.H,
-         rgb(18, 20, 28), 10, Layout.Corner, 1)
+    -- One continuous translucent glass pane. It uses its own alpha path so
+    -- the rest of the UI keeps the exact same transparency behaviour.
+    GlassSurface(State.X, State.Y, State.W, State.H,
+                 rgb(18, 21, 30), 10, Layout.Corner)
 
-    -- Internal structure only; no additional square shells.
+    -- A restrained top reflection. This follows the same outer silhouette and
+    -- does not create a second panel or a horizontal split.
+    Rect(State.X + Layout.Corner, State.Y + 1,
+         math.max(1, State.W - Layout.Corner * 2), 1,
+         Color3.new(1, 1, 1), 12, 0, 0.12)
+
+    -- Internal structure only.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.78)
+         th.Divider, 14, 1, 0.24)
 
     Line(Geometry.RailX + Geometry.RailW, Geometry.RailY + 1,
          Geometry.RailX + Geometry.RailW, State.Y + State.H - 2,
-         th.Divider, 14, 1, 0.72)
+         th.Divider, 14, 1, 0.20)
 
-    -- Keep the single animated outer edge on top.
+    -- Footer is part of the same glass surface as the main window.
+    -- Do not draw another surface here; the pane underneath already provides
+    -- the exact same background. Only the subtle separator is drawn.
+    local footerY = State.Y + State.H - Geometry.FooterH
+    Line(State.X + Layout.Corner, footerY,
+         State.X + State.W - Layout.Corner, footerY,
+         th.Divider, 16, 1, 0.20)
+
+    -- Single animated glass edge.
     DrawGlassBorder(th)
 end
 
@@ -1565,12 +1631,60 @@ end
 -- ============================================================================
 
 local function TickRailOpen(dt)
-    local inRail = MouseIn(Geometry.RailX, Geometry.RailY,
-                           Geometry.RailW, Geometry.RailH)
+    -- Defensive guard for executors that begin the render callback before any
+    -- geometry pass has populated the derived rail coordinates.
+    if Geometry.RailX == nil or Geometry.RailY == nil
+       or Geometry.RailW == nil or Geometry.RailH == nil then
+        Geometry.Recalculate()
+    end
 
-    local target = (State.RailPinned or inRail) and 1 or 0
-    State.RailOpen = Approach(State.RailOpen, target, 14, dt)
-    if math.abs(State.RailOpen - target) < 0.005 then
+    -- Only the actual collapsed tab/icon area opens the rail.
+    -- The expanded width is intentionally NOT part of the initial trigger zone.
+    local sectionPadX = 7
+    local sectionPadY = 5
+    local narrowW = Layout.TabRailNarrow
+    local narrowSectionW = math.max(40, narrowW - sectionPadX * 2)
+    local triggerX = Geometry.RailX + sectionPadX
+    local triggerY = Geometry.RailY + sectionPadY + 11
+    local rowH = Layout.TabRowH
+    local tabGap = Layout.TabGap
+
+    local overCollapsedTab = false
+    local rowY = triggerY
+    for _, tab in ipairs(State.Tabs) do
+        if not tab.Hidden then
+            if MouseIn(triggerX, rowY, narrowSectionW, rowH) then
+                overCollapsedTab = true
+                break
+            end
+            rowY = rowY + rowH + tabGap
+        end
+    end
+
+    -- Once the rail has started opening, the currently expanded tab can keep
+    -- it open. This prevents the cursor from falling through while the panel
+    -- is moving, without making the entire future sidebar a trigger zone.
+    local overExpandedTab = false
+    if State.RailOpen > 0.01 then
+        local sectionY = Geometry.RailY + sectionPadY
+        local sectionW = math.max(40, Geometry.RailW - sectionPadX * 2)
+        local y = sectionY + 11
+        for _, tab in ipairs(State.Tabs) do
+            if not tab.Hidden then
+                if MouseIn(Geometry.RailX + sectionPadX, y, sectionW, rowH) then
+                    overExpandedTab = true
+                    break
+                end
+                y = y + rowH + tabGap
+            end
+        end
+    end
+
+    local target = (State.RailPinned or overCollapsedTab or overExpandedTab) and 1 or 0
+
+    -- Smooth but responsive expansion.
+    State.RailOpen = Approach(State.RailOpen, target, 7, dt)
+    if math.abs(State.RailOpen - target) < 0.001 then
         State.RailOpen = target
     end
 end
@@ -1580,16 +1694,40 @@ local function DrawTabRail()
     local openAmt = State.RailOpen
     local railW = Geometry.RailW
 
-    local rowY = Geometry.RailY + 12
+    -- The main window remains the background. The navigation is intentionally
+    -- detached from it, so there is no full-height solid rail behind this panel.
+
+    -- The tabs now live inside their own detached rounded section. The section
+    -- is inset from the sidebar edges so the navigation reads as its own layer.
+    -- Detached navigation container: no full-height sidebar fill.
+    -- Keep a clear gap from the main window edge so the navigation reads as
+    -- its own floating section. It is slightly larger than the previous build.
+    local sectionPadX = 7
+    local sectionX = Geometry.RailX + sectionPadX
+    local sectionY = Geometry.RailY + 5
+    local sectionW = math.max(40, railW - sectionPadX * 2)
+    local sectionH = math.max(44, Geometry.RailH - 10)
+
+    SolidSurface(sectionX, sectionY, sectionW, sectionH,
+                 rgb(16, 19, 28), 36, 12)
+
+    local rowY = sectionY + 11
     local padX = 8
     local rowH = Layout.TabRowH
+    local tabGap = Layout.TabGap
     local iconSize = Layout.TabIcon
 
     for i, tab in ipairs(State.Tabs) do
         if not tab.Hidden then
-            local x = Geometry.RailX + padX
+            local x = sectionX + padX
             local y = rowY
-            local w = railW - padX * 2
+
+            -- The tab itself grows with the sidebar animation. There is no
+            -- separate width animation for the tab; it is driven directly by
+            -- the same RailOpen value as the navigation container.
+            local narrowTabW = math.max(1, Layout.TabRailNarrow - padX * 2)
+            local wideTabW = math.max(1, math.max(Layout.TabRailW, math.floor(State.W * 0.22)) - padX * 2)
+            local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
             local hover = MouseIn(x, y, w, rowH)
             local active = (State.ActiveIndex == i)
@@ -1605,20 +1743,25 @@ local function DrawTabRail()
                 tab.Hover = hover and 1 or 0
             end
 
-            -- soft neutral tab surface; the accent is used only as a state indicator.
-            local bgColor = mix(th.Panel, th.PanelHi, tab.Hover * 0.7 + tab.Glow * 0.3)
-            local bgAlpha = 0.35 + 0.25 * tab.Hover + 0.12 * tab.Glow
-            Rect(x, y, w, rowH, bgColor, 40, 7, bgAlpha)
+            -- Tabs sit on top of the solid rail as their own slightly lighter layer.
+            -- This keeps every tab visually separated from the sidebar surface.
+            local stateMix = tab.Hover * 0.65 + tab.Glow * 0.35
+            local bgColor = mix(rgb(23, 27, 38), rgb(30, 35, 48), stateMix)
+            SolidSurface(x, y, w, rowH, bgColor, 40, 7)
 
             -- slim active indicator, kept outside the icon/text area.
             if tab.Glow > 0.01 then
-                Rect(Geometry.RailX + 3, y + 6,
+                Rect(sectionX + 3, y + 6,
                      2, rowH - 12,
                      th.Accent, 42, 1, tab.Glow * 0.95)
             end
 
-            -- icon column
-            local iconX = x + 11
+            -- icon column. When the rail is collapsed there is no label, so
+            -- center the icon in the entire tab instead of leaving it offset
+            -- toward the old label position.
+            local centeredIconX = x + math.max(0, (narrowTabW - iconSize) / 2)
+            local expandedIconX = x + 11
+            local iconX = centeredIconX + (expandedIconX - centeredIconX) * openAmt
             local iconY = y + (rowH - iconSize) / 2
             local iconAlpha = 0.55 + 0.45 * math.max(tab.Glow, tab.Hover)
             local iconColor = tab.Glow > 0.5 and th.Accent or th.TextDim
@@ -1631,7 +1774,7 @@ local function DrawTabRail()
             end
 
             -- label
-            if openAmt > 0.02 then
+            if openAmt > 0.08 then
                 local labelX = x + 36
                 local labelRoom = w - (labelX - x) - 6
                 local labelY = TextMidY(y, rowH, Layout.TextSize)
@@ -1654,21 +1797,10 @@ local function DrawTabRail()
                 Input.Click = false
             end
 
-            rowY = rowY + rowH + 4
+            rowY = rowY + rowH + tabGap
         end
     end
 
-    -- bottom of rail: version / watermark
-    if openAmt > 0.1 then
-        local bottomY = Geometry.RailY + Geometry.RailH - 20
-        local text = "SHADOW UI v1.0"
-        local w = TextWidth(text, Layout.TinySize, FontSystem)
-        Text(text,
-             Geometry.RailX + (Geometry.RailW - w) / 2,
-             bottomY,
-             th.TextMuted, Layout.TinySize, FontSystem,
-             46, openAmt * 0.55)
-    end
 end
 
 -- ============================================================================
@@ -4265,12 +4397,12 @@ local function Render()
         return
     end
 
-    -- Geometry must exist before any update reads rail/content coordinates.
-    -- Rail opening changes State.RailOpen, so recalculate again after the
-    -- state updates to keep the rendered layout synchronized for this frame.
+    -- TickRailOpen uses rail geometry for its hover trigger. Always establish a
+    -- valid baseline first, even on the very first render frame.
     Geometry.Recalculate()
 
-    -- animate/state updates
+    -- animate/state updates first. Recalculate again after these updates so every
+    -- element uses the exact same window position and rail width for this frame.
     TickRailOpen(State.Delta)
     TickDrag(State.Delta)
     TickResize()
