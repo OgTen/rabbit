@@ -1838,7 +1838,7 @@ local function DrawTabRail()
             -- Soft capsule surface. The radius tracks the height so the
             -- ends stay fully rounded in both collapsed and expanded states.
             local stateMix = tab.Hover * 0.55 + tab.Glow * 0.45
-            local bgColor = mix(rgb(29, 33, 45), rgb(42, 47, 62), stateMix)
+            local bgColor = mix(rgb(40, 44, 58), rgb(55, 60, 76), stateMix)
             local pillRadius = math.max(8, math.floor(tabRowH * 0.5))
             SolidSurface(x, y, w, tabRowH, bgColor, 40, pillRadius)
 
