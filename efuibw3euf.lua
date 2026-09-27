@@ -1645,32 +1645,21 @@ end
 
 local function DrawStartupFrame()
     local th = State.Theme
-    local st = State.Startup
-
-    -- The loading frame is always exactly 80px tall.
-    local x = st.StartX
-    local y = st.StartY
-    local w = st.StartW
-    local h = 80
-
+    local x, y, w, h = State.X, State.Y, State.W, State.H
     GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
+    DrawGlassBorder(th)
 
-    -- Simple loading indicator. No logo and no animated text.
-    local barW = math.min(220, math.max(140, w - 80))
+    -- Keep the existing loading indicator, but without any startup logo/text.
+    local barW = math.min(190, math.max(135, w - 38))
     local barH = 4
     local barX = x + (w - barW) / 2
-    local barY = y + (h - barH) / 2
+    local barY = y + h - 12
 
-    Rect(barX, barY, barW, barH, th.Track, 24, 2, 0.55)
-    local fillW = math.max(2, barW * Clamp(st.Progress, 0, 1))
-    Rect(barX, barY, fillW, barH, th.Accent, 25, 2, 1)
-
-    -- Draw the border against the exact startup dimensions rather than the
-    -- normal window dimensions.
-    local oldX, oldY, oldW, oldH = State.X, State.Y, State.W, State.H
-    State.X, State.Y, State.W, State.H = x, y, w, h
-    DrawGlassBorder(th)
-    State.X, State.Y, State.W, State.H = oldX, oldY, oldW, oldH
+    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
+    if State.Startup.Progress > 0 then
+        Rect(barX, barY, math.max(1, barW * State.Startup.Progress), barH,
+             th.Accent, 31, 2, 0.95)
+    end
 end
 
 local function TickStartup(dt)
@@ -1760,6 +1749,25 @@ local TitleButtons = {
 local function DrawTitleBar(title)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
+    local cxLeft = State.X + 14
+
+    -- brand mark: slightly larger left-corner logo
+    local markSize = 26
+    local markX = cxLeft
+    local markY = cy - markSize / 2
+
+    Rect(markX, markY, markSize, markSize,
+         th.Accent, 30, 5, 0.18)
+    Stroke(markX, markY, markSize, markSize,
+           th.Accent, 31, 5, 0.55)
+
+    local letter = string.upper(string.sub(title, 1, 1))
+    local logoTextSize = 14
+    local letterW = TextWidth(letter, logoTextSize, FontBold)
+    Text(letter, markX + markSize / 2 - letterW / 2,
+         markY + (markSize - logoTextSize) / 2,
+         th.Accent, logoTextSize, FontBold, 32, 1)
+
     -- centered window title
     local titleSize = 15
     local titleW = TextWidth(title, titleSize, FontBold)
@@ -4438,12 +4446,13 @@ local function Render()
     local startupIsReveal = State.Startup.Active and State.Startup.Phase == "reveal"
 
     if startupIsLoading then
-        -- Lock the startup geometry for the entire loading phase.
-        -- Nothing else is allowed to restore the normal window height here.
-        State.X = State.Startup.StartX
-        State.Y = State.Startup.StartY
+        -- Hard-lock the loading frame height to exactly 80px every frame.
+        -- This prevents any other window/layout logic from restoring the
+        -- normal window height while the loading phase is active.
         State.W = State.Startup.StartW
         State.H = 80
+        State.X = State.Startup.StartX
+        State.Y = State.Startup.StartY
 
         Geometry.Recalculate()
         ResetPool()
