@@ -1566,27 +1566,38 @@ local function DrawGlassBorder(th)
     local radius = math.min(Layout.Corner, math.max(2, math.min(w, h) / 2 - 1))
 
     -- ONE visible window edge. Nothing else is drawn around the perimeter.
-    Stroke(x, y, w, h, th.Stroke, 20, radius, 0.78)
+    Stroke(x, y, w, h, Color3.new(1, 1, 1), 20, radius, 0.92)
 
     if State.NoAnim then
         return
     end
 
-    -- A single small highlight travels around the same border. It is a
-    -- light source on the edge, not another frame.
+    -- A colored snake travels around the white border. The trail is made
+    -- from progressively smaller/fainter points so the movement is obvious.
     local straightW = math.max(0, w - radius * 2)
     local straightH = math.max(0, h - radius * 2)
     local perimeter = 2 * straightW + 2 * straightH + 2 * math.pi * radius
     local distance = (os.clock() * 92) % perimeter
-    local accent = mix(th.AccentA, th.AccentB, 0.5)
+    local trail = mix(th.AccentA, th.AccentB, 0.5)
 
-    local tx1, ty1 = GlassBorderPoint(distance - 18, x, y, w, h, radius)
-    local tx2, ty2 = GlassBorderPoint(distance - 7, x, y, w, h, radius)
-    local tx3, ty3 = GlassBorderPoint(distance, x, y, w, h, radius)
+    local trailPoints = {
+        { offset = -30, size = 1.4, alpha = 0.12 },
+        { offset = -24, size = 1.7, alpha = 0.18 },
+        { offset = -18, size = 2.0, alpha = 0.26 },
+        { offset = -12, size = 2.4, alpha = 0.38 },
+        { offset = -7,  size = 2.8, alpha = 0.52 },
+        { offset = -3,  size = 3.2, alpha = 0.68 },
+    }
 
-    Circle(tx1, ty1, 4.5, accent, 21, true, 1, 16, 0.05)
-    Circle(tx2, ty2, 3.2, accent, 22, true, 1, 16, 0.12)
-    Circle(tx3, ty3, 1.8, Color3.new(1, 1, 1), 23, true, 1, 12, 0.95)
+    for i, point in ipairs(trailPoints) do
+        local px, py = GlassBorderPoint(distance + point.offset,
+                                        x, y, w, h, radius)
+        Circle(px, py, point.size, trail, 20 + i, true, 1, 16, point.alpha)
+    end
+
+    local headX, headY = GlassBorderPoint(distance, x, y, w, h, radius)
+    Circle(headX, headY, 3.8, trail, 28, true, 1, 16, 0.95)
+    Circle(headX, headY, 1.8, Color3.new(1, 1, 1), 29, true, 1, 12, 1)
 end
 
 local function DrawFrame()
@@ -1606,7 +1617,7 @@ local function DrawFrame()
     -- Internal structure only.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
          State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         th.Divider, 14, 1, 0.38)
+         Color3.new(1, 1, 1), 14, 1, 0.78)
 
     -- Keep the vertical separator exactly one sidebar-section padding unit
     -- to the right of the detached section, matching the 10px left inset.
@@ -1617,7 +1628,7 @@ local function DrawFrame()
 
     Line(separatorX, Geometry.RailY + 1,
          separatorX, State.Y + State.H - 2,
-         th.Divider, 14, 1, 0.34)
+         Color3.new(1, 1, 1), 14, 1, 0.72)
 
     -- Footer is part of the same glass surface as the main window.
     -- Do not draw another surface here; the pane underneath already provides
@@ -1625,7 +1636,7 @@ local function DrawFrame()
     local footerY = State.Y + State.H - Geometry.FooterH
     Line(State.X + Layout.Corner, footerY,
          State.X + State.W - Layout.Corner, footerY,
-         th.Divider, 16, 1, 0.34)
+         Color3.new(1, 1, 1), 16, 1, 0.72)
 
     -- Single animated glass edge.
     DrawGlassBorder(th)
@@ -1677,7 +1688,7 @@ local function DrawStartupFrame()
     local barX = x + (w - barW) / 2
     local barY = y + h - 12
 
-    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
+    Rect(barX, barY, barW, barH, Color3.new(1, 1, 1), 30, 2, 0.42)
     if State.Startup.Progress > 0 then
         Rect(barX, barY,
              math.max(1, barW * State.Startup.Progress),
