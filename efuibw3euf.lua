@@ -547,6 +547,90 @@ local Input = {
 local PrevMouseState = { L = false, R = false, M = false }
 local PrevWheel = 0
 
+local function ReadInput()
+    Input.PrevX, Input.PrevY = Input.X, Input.Y
+
+    -- Some executors briefly expose nil mouse coordinates during startup or
+    -- while the game window is changing focus. Keep the renderer numeric.
+    local mx = tonumber(Mouse.X) or Input.PrevX or 0
+    local my = tonumber(Mouse.Y) or Input.PrevY or 0
+    Input.X, Input.Y = mx, my
+    Input.DX = Input.X - Input.PrevX
+    Input.DY = Input.Y - Input.PrevY
+
+    local l, r, m = false, false, false
+
+    pcall(function() l = ismouse1pressed() end)
+    pcall(function() r = ismouse2pressed() end)
+    pcall(function()
+        -- middle button via raw keycode
+        m = iskeypressed(0x04)
+    end)
+
+    Input.Down      = l
+    Input.RightDown = r
+    Input.MidDown   = m
+
+    Input.Click      = l and not PrevMouseState.L
+    Input.RightClick = r and not PrevMouseState.R
+    Input.MidClick   = m and not PrevMouseState.M
+
+    Input.Up = (not l) and PrevMouseState.L
+
+    PrevMouseState.L = l
+    PrevMouseState.R = r
+    PrevMouseState.M = m
+
+    -- wheel: executors expose this differently. Try common names.
+    local wheel = 0
+
+    pcall(function()
+        if mousewheel then
+            local value = tonumber(mousewheel())
+            if value ~= nil then
+                wheel = value
+            end
+        end
+    end)
+
+    pcall(function()
+        if getwheel then
+            local value = tonumber(getwheel())
+            if value ~= nil then
+                wheel = value
+            end
+        end
+    end)
+
+    local previousWheel = tonumber(PrevWheel) or 0
+    Input.Wheel = wheel - previousWheel
+    PrevWheel = wheel
+end
+
+local function MouseIn(x, y, w, h)
+    local mx = tonumber(Input.X) or 0
+    local my = tonumber(Input.Y) or 0
+
+    -- Geometry values can briefly be nil during executor startup or a
+    -- resize/reload transition. Normalize every hit-test argument so a
+    -- transient nil can never abort the render loop.
+    x = tonumber(x) or 0
+    y = tonumber(y) or 0
+    w = tonumber(w) or 0
+    h = tonumber(h) or 0
+
+    return mx >= x and mx <= x + w
+       and my >= y and my <= y + h
+end
+
+local function MouseInCircle(cx, cy, radius)
+    local mx = tonumber(Input.X) or 0
+    local my = tonumber(Input.Y) or 0
+    local dx = mx - cx
+    local dy = my - cy
+    return (dx * dx + dy * dy) <= (radius * radius)
+end
+
 -- ============================================================================
 --  KEY MAP  --  name <-> virtual code, held/click state
 -- ============================================================================
@@ -3977,6 +4061,21 @@ local ThemeTween = {
     Duration = 0.35,
 }
 
+-- Matcha may not expose Roblox's typeof() helper.
+-- Detect Color3 values without relying on typeof().
+local function IsColor3(value)
+    if value == nil then return false end
+
+    local okR, r = pcall(function() return value.R end)
+    local okG, g = pcall(function() return value.G end)
+    local okB, b = pcall(function() return value.B end)
+
+    return okR and okG and okB
+        and type(r) == "number"
+        and type(g) == "number"
+        and type(b) == "number"
+end
+
 local function SwitchTheme(index)
     if index == State.ThemeIndex then return end
     local new = Themes[index]
@@ -3991,7 +4090,7 @@ local function SwitchTheme(index)
     -- capture current as "from"
     local from = {}
     for k, v in pairs(State.Theme) do
-        if typeof(v) == "Color3" then from[k] = v end
+        if IsColor3(v) then from[k] = v end
     end
 
     ThemeTween.Active = true
@@ -4015,7 +4114,7 @@ local function TickTheme(dt)
     local to   = ThemeTween.To
     local result = {}
     for k, v in pairs(to) do
-        if typeof(v) == "Color3" and from[k] then
+        if IsColor3(v) and from[k] then
             result[k] = mix(from[k], v, t)
         else
             result[k] = v
