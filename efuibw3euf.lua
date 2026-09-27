@@ -3969,6 +3969,224 @@ end
 
 
 -- ============================================================================
+--  HUD BOXES  --  persistent floating info panels, draggable
+-- ============================================================================
+
+local HUDBox = {}
+HUDBox.__index = HUDBox
+
+local HUDBoxes = {}
+
+function HUDBox.new(opts)
+    opts = opts or {}
+    local self = setmetatable({
+        Title    = opts.Title or "Box",
+        X        = opts.X or 40,
+        Y        = opts.Y or 40,
+        W        = opts.W or 200,
+        Lines    = {},
+        Visible  = true,
+        Pin      = false,
+        _drag    = nil,
+        _hover   = 0,
+    }, HUDBox)
+    HUDBoxes[#HUDBoxes + 1] = self
+    return self
+end
+
+function HUDBox:SetVisible(v) self.Visible = v and true or false end
+
+function HUDBox:Line(text, color)
+    self.Lines[#self.Lines + 1] = { Text = text, Color = color }
+    return self
+end
+
+function HUDBox:Clear() self.Lines = {} return self end
+
+local function DrawHUDBoxes()
+    local th = State.Theme
+
+    for _, box in ipairs(HUDBoxes) do
+        if box.Visible then
+            local lineH = 16
+            local headerH = 22
+            local padX = 10
+            local padY = 8
+            local contentH = math.max(1, #box.Lines) * lineH
+            local totalH = headerH + contentH + padY
+
+            -- drag
+            if box._drag then
+                if Input.Down then
+                    box.X = Input.X - box._drag.gx
+                    box.Y = Input.Y - box._drag.gy
+                else
+                    box._drag = nil
+                end
+            end
+
+            local hover = MouseIn(box.X, box.Y, box.W, totalH)
+            box._hover = Approach(box._hover, hover and 1 or 0, 16, State.Delta)
+
+            if hover and Input.Click then
+                box._drag = { gx = Input.X - box.X, gy = Input.Y - box.Y }
+                Input.Click = false
+            end
+
+            -- shadow
+            Rect(box.X + 2, box.Y + 3, box.W, totalH,
+                 Color3.new(0, 0, 0), 220, 8, 0.28)
+
+            -- body
+            Rect(box.X, box.Y, box.W, totalH, th.Base, 221, 8, 0.94)
+            Stroke(box.X, box.Y, box.W, totalH, th.Accent, 222, 8,
+                   0.4 + 0.3 * box._hover)
+
+            -- header gradient bar
+            Rect(box.X, box.Y, box.W, headerH, th.Panel, 223, 8, 0.85)
+            GradientRect(box.X + 1, box.Y + 1, box.W - 2, 1.5,
+                         th.AccentA, th.AccentB, 224, 0.6)
+
+            Text(box.Title, box.X + padX, box.Y + 4,
+                 th.Text, 12, FontBold, 225, 0.95,
+                 box.W - padX * 2)
+
+            -- divider
+            Line(box.X + 6, box.Y + headerH,
+                 box.X + box.W - 6, box.Y + headerH,
+                 th.Divider, 224, 1, 0.7)
+
+            -- lines
+            for i, line in ipairs(box.Lines) do
+                local ly = box.Y + headerH + padY + (i - 1) * lineH
+                Text(line.Text, box.X + padX, ly,
+                     line.Color or th.TextDim, 11, FontSystem, 226, 0.9,
+                     box.W - padX * 2)
+            end
+        end
+    end
+end
+
+local function HUDBox_Remove(box)
+    for i, b in ipairs(HUDBoxes) do
+        if b == box then
+            table.remove(HUDBoxes, i)
+            return
+        end
+    end
+end
+
+-- ============================================================================
+--  CONFIG  --  save/load values keyed by tab+row path
+-- ============================================================================
+
+local function BuildPath(tab, row)
+    local tabName = tab and tab.Name or "?"
+    local rowName = row and row.Title or "?"
+    return tabName .. "/" .. rowName
+end
+
+local function CollectConfig()
+    local out = {}
+    for _, tab in ipairs(State.Tabs) do
+        local function walk(container, pathPrefix)
+            for _, row in ipairs(container.Rows or {}) do
+                local path = pathPrefix .. (row.Title or "")
+
+                if getmetatable(row) == Section then
+                    walk(row, path .. "/")
+                elseif getmetatable(row) == InlineRow then
+                    -- inline cells not individually tracked
+                elseif row.Kind == "Toggle" then
+                    out[path] = { k = "Toggle", v = row.Value }
+                elseif row.Kind == "Slider" then
+                    out[path] = { k = "Slider", v = row.Value }
+                elseif row.Kind == "Dropdown" then
+                    out[path] = { k = "Dropdown", v = row.Value }
+                elseif row.Kind == "Keybind" then
+                    out[path] = { k = "Keybind", v = row.Value }
+                elseif row.Kind == "Textbox" then
+                    out[path] = { k = "Textbox", v = row.Value }
+                elseif row.Kind == "RangeSlider" then
+                    out[path] = { k = "RangeSlider", lo = row.Low, hi = row.High }
+                elseif row.Kind == "ColorPicker" then
+                    out[path] = {
+                        k = "ColorPicker",
+                        r = row.Value.R, g = row.Value.G, b = row.Value.B,
+                        a = row._alpha or 1,
+                    }
+                end
+            end
+        end
+        walk(tab, tab.Name .. "/")
+    end
+    return out
+end
+
+local function ApplyConfig(data)
+    if not data then return end
+    for _, tab in ipairs(State.Tabs) do
+        local function walk(container, pathPrefix)
+            for _, row in ipairs(container.Rows or {}) do
+                local path = pathPrefix .. (row.Title or "")
+
+                if getmetatable(row) == Section then
+                    walk(row, path .. "/")
+                else
+                    local entry = data[path]
+                    if entry then
+                        pcall(function()
+                            if entry.k == "Toggle" then
+                                row:SetValue(entry.v, true)
+                            elseif entry.k == "Slider" then
+                                row:SetValue(entry.v, true)
+                            elseif entry.k == "Dropdown" then
+                                row:SetValue(entry.v, true)
+                            elseif entry.k == "Keybind" then
+                                row:SetValue(entry.v, true)
+                            elseif entry.k == "Textbox" then
+                                row:SetValue(entry.v, true)
+                            elseif entry.k == "RangeSlider" then
+                                row:SetValue(entry.lo, entry.hi, true)
+                            elseif entry.k == "ColorPicker" then
+                                row:SetValue(Color3.new(entry.r, entry.g, entry.b), true)
+                                row._alpha = entry.a or 1
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+        walk(tab, tab.Name .. "/")
+    end
+end
+
+local function SaveConfig()
+    local data = CollectConfig()
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(data)
+    end)
+    if not ok then return false end
+    local ok2 = pcall(function()
+        writefile(State.ConfigFile, encoded)
+    end)
+    return ok2
+end
+
+local function LoadConfig()
+    local ok, exists = pcall(function() return isfile(State.ConfigFile) end)
+    if not ok or not exists then return false end
+    local ok2, raw = pcall(function() return readfile(State.ConfigFile) end)
+    if not ok2 then return false end
+    local ok3, decoded = pcall(function()
+        return HttpService:JSONDecode(raw)
+    end)
+    if not ok3 or not decoded then return false end
+    ApplyConfig(decoded)
+    return true
+end
+
+-- ============================================================================
 --  OPEN / CLOSE  --  visibility animation
 -- ============================================================================
 
