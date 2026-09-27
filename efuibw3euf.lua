@@ -583,14 +583,27 @@ local function ReadInput()
 
     -- wheel: executors expose this differently. Try common names.
     local wheel = 0
+
     pcall(function()
-        if mousewheel then wheel = mousewheel() end
-    end)
-    pcall(function()
-        if getwheel then wheel = getwheel() end
+        if mousewheel then
+            local value = tonumber(mousewheel())
+            if value ~= nil then
+                wheel = value
+            end
+        end
     end)
 
-    Input.Wheel = wheel - PrevWheel
+    pcall(function()
+        if getwheel then
+            local value = tonumber(getwheel())
+            if value ~= nil then
+                wheel = value
+            end
+        end
+    end)
+
+    local previousWheel = tonumber(PrevWheel) or 0
+    Input.Wheel = wheel - previousWheel
     PrevWheel = wheel
 end
 
