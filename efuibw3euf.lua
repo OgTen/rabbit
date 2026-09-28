@@ -4844,7 +4844,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v25"
+Library.Version       = "v27"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5006,7 +5006,7 @@ end)
 
 
 
-Library.Version = "v26"
+Library.Version = "v27"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
