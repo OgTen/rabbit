@@ -1296,63 +1296,6 @@ end
 -- Best-effort Roblox game-input sink while the Shadow UI menu is open.
 -- Everything is protected so executors that restrict game services continue
 -- to run normally rather than breaking the UI.
-local GameInputBlocked = false
-local InputSinkBound = false
-local InputSinkName = "ShadowUI_InputSink"
-
-local function SetGameInputBlocked(blocked)
-    blocked = blocked and true or false
-    if blocked == GameInputBlocked then return end
-    GameInputBlocked = blocked
-
-    pcall(function()
-        local gameObj = game
-        if not gameObj or not gameObj.GetService then return end
-        local CAS = gameObj:GetService("ContextActionService")
-        local UIS = gameObj:GetService("UserInputService")
-
-        -- Release locked-center mouse/camera look while interacting with the UI.
-        if UIS and Enum and Enum.MouseBehavior then
-            if blocked then
-                pcall(function() UIS.MouseBehavior = Enum.MouseBehavior.Default end)
-            end
-        end
-
-        if not CAS then return end
-
-        if blocked then
-            if InputSinkBound then return end
-            local EnumObj = Enum
-            if not EnumObj or not EnumObj.ContextActionResult
-               or not EnumObj.UserInputType then return end
-
-            local function sink()
-                return EnumObj.ContextActionResult.Sink
-            end
-
-            CAS:BindActionAtPriority(
-                InputSinkName,
-                sink,
-                false,
-                10000,
-                EnumObj.UserInputType.Keyboard,
-                EnumObj.UserInputType.MouseButton1,
-                EnumObj.UserInputType.MouseButton2,
-                EnumObj.UserInputType.MouseButton3,
-                EnumObj.UserInputType.MouseWheel,
-                EnumObj.UserInputType.Gamepad1
-            )
-            InputSinkBound = true
-        else
-            if InputSinkBound then
-                CAS:UnbindAction(InputSinkName)
-                InputSinkBound = false
-            end
-        end
-    end)
-end
-
-
 -- ============================================================================
 --  PART 2 COMPLETE
 --  Next: PART 3 -- layout engine, scroll, resize handle, window frame,
@@ -2213,7 +2156,6 @@ local function DrawTitleBar(title, subtitle)
 
     if closeHover and Input.Click then
         State.Open = false
-        SetGameInputBlocked(false)
         Input.Click = false
         return
     end
@@ -3075,8 +3017,17 @@ local function DrawSection(section, x, y, w)
     section._layoutW = w
     section._layoutH = headerH + visiblePanelH
 
-    local headerVisible = VerticalVisible(y, headerH)
-    local panelVisible = VerticalVisible(panelY, visiblePanelH)
+    local viewportTop = ActiveClipTop or -math.huge
+    local viewportBottom = ActiveClipBottom or math.huge
+    local headerVisible = (y >= viewportTop and y + headerH <= viewportBottom)
+
+    -- Drawing primitives cannot be truly scissored in Matcha, so never draw a
+    -- section surface/control unless the primitive fits wholly inside the
+    -- content viewport. The section's visual panel is shortened at the bottom.
+    local clippedPanelTop = math.max(panelY, viewportTop)
+    local clippedPanelBottom = math.min(panelY + visiblePanelH, viewportBottom)
+    local clippedPanelH = math.max(0, clippedPanelBottom - clippedPanelTop)
+    local panelVisible = clippedPanelH > 0 and panelY >= viewportTop
     if not headerVisible and not panelVisible then return end
 
     if headerVisible then
@@ -3095,15 +3046,16 @@ local function DrawSection(section, x, y, w)
     if collapse >= 0.985 then return end
 
     if panelVisible then
-        FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
-        Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+        FrostedSurface(x, panelY, w, clippedPanelH, State.Theme.Panel, 40, Layout.SectionCorner)
+        Stroke(x, panelY, w, clippedPanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
     end
 
     local innerX = x + Layout.SectionPadX
     local innerY = panelY + Layout.SectionPadY
     local innerW = math.max(1, w - Layout.SectionPadX * 2)
     local cy = innerY
-    local contentBottom = panelY + visiblePanelH - Layout.SectionPadY
+    local contentBottom = math.min(panelY + visiblePanelH - Layout.SectionPadY,
+                                   viewportBottom - Layout.SectionPadY)
 
     for _, child in ipairs(section.Rows or {}) do
         if not child.Hidden and cy < contentBottom then
@@ -3116,7 +3068,12 @@ local function DrawSection(section, x, y, w)
             end
 
             local h = estimatedH
-            if VerticalVisible(cy, estimatedH) then
+            local fullyInsideViewport =
+                cy >= viewportTop and
+                (cy + estimatedH) <= contentBottom and
+                (cy + estimatedH) <= viewportBottom
+
+            if fullyInsideViewport then
                 if getmetatable(child) == InlineRow then
                     h = LayoutInline(child, innerX, cy, innerW)
                 else
@@ -3156,11 +3113,11 @@ local function InputSection(section)
                 for _, ctrl in ipairs(child.Cells or {}) do
                     if not ctrl.Hidden then h = math.max(h, ctrl.Height or Layout.RowHeight) end
                 end
-                if cy + h >= Geometry.ContentY and cy <= Geometry.ContentY + Geometry.ContentH then
+                if cy >= Geometry.ContentY and cy + h <= Geometry.ContentY + Geometry.ContentH then
                     InputInline(child, innerX, cy, innerW)
                 end
             else
-                if cy + h >= Geometry.ContentY and cy <= Geometry.ContentY + Geometry.ContentH then
+                if cy >= Geometry.ContentY and cy + h <= Geometry.ContentY + Geometry.ContentH then
                     h = InputRow(child, innerX, cy, innerW)
                 end
             end
@@ -4304,11 +4261,17 @@ local function DrawContent()
         local h = item.h
         local revealThis = item.reveal <= StartupRevealCount(#items, State.Startup.RevealProgress)
 
-        if revealThis and (not State.Startup.Active or (y + h >= clipTop and y <= clipBottom)) then
+        if revealThis then
             if item.kind == "section" then
-                DrawSection(row, item.x, y, item.w)
+                if y + h >= clipTop and y <= clipBottom then
+                    DrawSection(row, item.x, y, item.w)
+                end
             else
-                DrawRow(row, item.x, y, item.w)
+                -- Matcha Drawing has no scissor rectangle. Hide partial rows
+                -- instead of allowing their primitives to escape the window.
+                if y >= clipTop and (y + h) <= clipBottom then
+                    DrawRow(row, item.x, y, item.w)
+                end
             end
         end
     end
@@ -4344,12 +4307,13 @@ local function InputContent()
         local y = item.y - tab.Scroll
         local h = item.h
 
-        if y + h >= viewportTop and y <= Geometry.ContentY + Geometry.ContentH then
-            if item.kind == "section" then
+        local viewportBottom = Geometry.ContentY + Geometry.ContentH
+        if item.kind == "section" then
+            if y + h >= viewportTop and y <= viewportBottom then
                 InputSection(row)
-            else
-                InputRow(row, item.x, y, item.w)
             end
+        elseif y >= viewportTop and (y + h) <= viewportBottom then
+            InputRow(row, item.x, y, item.w)
         end
     end
 
@@ -4808,7 +4772,6 @@ end
 
 local function ToggleUI()
     State.Open = not State.Open
-    SetGameInputBlocked(State.Open and not State.Startup.Active)
     if not State.Open then
         ClearFocus()
         CancelCapture()
@@ -4863,15 +4826,6 @@ local function Render()
     TickVisibility(State.Delta)
     TickTheme(State.Delta)
     TickStartup(State.Delta)
-    SetGameInputBlocked(State.Open and not State.Startup.Active and State.Visible > 0.05)
-    if State.Open and not State.Startup.Active then
-        pcall(function()
-            local UIS = game:GetService("UserInputService")
-            if UIS and Enum and Enum.MouseBehavior then
-                UIS.MouseBehavior = Enum.MouseBehavior.Default
-            end
-        end)
-    end
 
     local startupIsLoading = State.Startup.Active and State.Startup.Phase == "loading"
     local startupIsShrink = State.Startup.Active and State.Startup.Phase == "shrink"
@@ -5315,7 +5269,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v38-DRAG-SCROLL-CLIP"
+Library.Version       = "v39-RESIZE-BOUNDARY-FIX"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5501,7 +5455,7 @@ end)
 
 
 
-Library.Version = "v38-DRAG-SCROLL-CLIP"
+Library.Version = "v39-RESIZE-BOUNDARY-FIX"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
