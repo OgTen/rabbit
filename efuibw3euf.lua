@@ -2080,48 +2080,79 @@ local function DrawStartupFrame()
     DrawGlassBorder(th)
 
     local progress = math.max(0, math.min(1, st.Progress))
-    local intro = math.min(st.Time / 0.55, 1)
-    local ease = intro * intro * (3 - 2 * intro)
 
-    -- Logo-aware premium boot identity. The same persistent image holder is
-    -- reused by the main title bar after startup.
+    -- Cinematic startup identity:
+    --   1) logo rests in the exact middle
+    --   2) logo slowly glides to its normal left-side position
+    --   3) title grows/reveals out from behind the logo
     local logoSize = math.min(42, math.max(28, State.LogoSize + 8))
-    local logoX = x + 18
+    local centerLogoX = x + (w - logoSize) / 2
+    local finalLogoX = x + 18
     local logoY = y + math.floor((h - logoSize) / 2) - 3
-    local hasLogo = DrawPicture(State.Logo, logoX, logoY, logoSize, logoSize,
-                                Layer(32), ease, 7)
+
+    -- Timings are fractions of the configured loading duration, so changing
+    -- startupDuration keeps the same animation proportions.
+    local duration = math.max(0.5, st.Duration or 5)
+    local logoMoveStart = duration * 0.18
+    local logoMoveEnd   = duration * 0.55
+    local titleStart    = duration * 0.46
+    local titleEnd      = duration * 0.82
+
+    local function Smooth01(v)
+        v = math.max(0, math.min(1, v))
+        return v * v * (3 - 2 * v)
+    end
+
+    local moveT = Smooth01((st.Time - logoMoveStart) /
+                           math.max(0.001, logoMoveEnd - logoMoveStart))
+    local logoX = centerLogoX + (finalLogoX - centerLogoX) * moveT
+
+    local logoReady = DrawPicture(State.Logo, logoX, logoY,
+                                  logoSize, logoSize,
+                                  Layer(34), 1, 7)
+
+    -- If the asynchronous logo has not arrived yet, retain the existing
+    -- minimal mark rather than leaving the loader visually empty.
+    if not logoReady then
+        local pulse = 0.72 + math.sin(os.clock() * 2.4) * 0.16
+        Rect(centerLogoX, y + h / 2 - 3, logoSize, 2,
+             th.AccentA, 30, 1, pulse)
+        Rect(centerLogoX + logoSize * 0.20, y + h / 2 + 2,
+             logoSize * 0.60, 1, th.AccentB, 31, 1, pulse * 0.65)
+    end
 
     local title = State.WindowTitle or "SHADOW UI"
     local titleSize = 15
-    local titleX
-    if hasLogo then
-        titleX = logoX + logoSize + 12 - (1 - ease) * 8
-    else
-        local markW = math.min(34, w * 0.14)
-        local markX = x + 18
-        local markY = y + h / 2 - 18
-        Rect(markX, markY, markW * ease, 2, th.AccentA, 30, 1, 0.95)
-        Rect(markX, markY + 4, math.max(8, markW * 0.55) * ease, 1,
-             th.AccentB, 31, 1, 0.55)
-        titleX = markX + markW + 12 - (1 - ease) * 8
-    end
+    local finalTitleX = finalLogoX + logoSize + 12
     local titleY = y + h / 2 - 12
 
-    Text(title, titleX, titleY, th.Text, titleSize, FontBold,
-         33, ease, math.max(40, w - (titleX - x) - 24))
+    local titleT = Smooth01((st.Time - titleStart) /
+                            math.max(0.001, titleEnd - titleStart))
+
+    if titleT > 0.001 then
+        local fullTitleW = TextWidth(title, titleSize, FontBold)
+        local revealRoom = math.max(1, fullTitleW * titleT)
+
+        -- The text begins underneath the logo and gently slides into its final
+        -- position while its available drawing room expands from left to right.
+        local titleX = finalTitleX - (1 - titleT) * 12
+        local titleAlpha = math.min(1, titleT * 1.18)
+
+        Text(title, titleX, titleY, th.Text, titleSize, FontBold,
+             35, titleAlpha, revealRoom)
+    end
 
     local railX = x + 18
     local railW = math.max(70, w - 36)
     local railY = y + h - 13
 
-    Rect(railX, railY, railW, 2, th.Divider, 34, 1, 0.30)
+    Rect(railX, railY, railW, 2, th.Divider, 36, 1, 0.30)
     if progress > 0 then
         Rect(railX, railY, math.max(1, railW * progress), 2,
-             th.AccentA, 35, 1, 0.92)
+             th.AccentA, 37, 1, 0.92)
         Circle(railX + railW * progress, railY + 1, 2.2,
-               th.Text, 36, true, 1, 12, 0.92)
+               th.Text, 38, true, 1, 12, 0.92)
     end
-
 end
 
 local function TickStartup(dt)
@@ -4979,7 +5010,6 @@ end
 local LastHotkeyState = false
 
 local function Render()
-    HidePicture(State.Logo)
     -- Startup owns the first render. Never draw the full window before
     -- CreateWindow has explicitly started the startup sequence.
     if not State.Startup.Active and State.Frame == 0 then
@@ -5043,6 +5073,7 @@ local function Render()
     end
 
     if startupIsShrink then
+        HidePicture(State.Logo)
         Geometry.Recalculate()
         ResetPool()
         local radius = math.min(Layout.Corner, math.max(1, State.H / 2))
@@ -5056,6 +5087,7 @@ local function Render()
     end
 
     if startupIsPop then
+        HidePicture(State.Logo)
         Geometry.Recalculate()
         ResetPool()
         DrawFrame()
@@ -5072,6 +5104,7 @@ local function Render()
     end
 
     if State.Visible < 0.005 then
+        HidePicture(State.Logo)
         -- window hidden: skip everything
         ResetPool()
         -- but notifications/tooltips still show
@@ -5620,7 +5653,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v43-INS-IMAGE-LOADER"
+Library.Version       = "v44-LOGO-TITLE-REVEAL"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5819,7 +5852,7 @@ end)
 
 
 
-Library.Version = "v43-INS-IMAGE-LOADER"
+Library.Version = "v44-LOGO-TITLE-REVEAL"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
