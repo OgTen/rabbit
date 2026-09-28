@@ -2998,8 +2998,9 @@ function DrawRow(row, x, y, w)
         return h or Layout.RowHeight
     end
 
-    if row.Draw then
-        row:Draw(x, y, w)
+    local draw = row.Draw
+    if type(draw) == "function" then
+        draw(row, x, y, w)
         if IsTooltipControl(row) and row.Enabled ~= false
             and row.Tooltip and row.Tooltip ~= ""
             and MouseIn(x, y, w, row.Height or Layout.RowHeight) then
