@@ -4870,6 +4870,7 @@ end
 -- ============================================================================
 
 local Library = {}
+Library.Version = "v18"
 
 -- CreateWindow is the public constructor used by showcase/user scripts.
 -- The startup animation is part of the same window.
@@ -5075,9 +5076,10 @@ end)
 
 
 
--- Matcha-friendly public export.
--- The global export is intentional because some Matcha loadstring contexts
--- do not reliably preserve the return value of the executed chunk.
+-- Matcha-friendly public exports.
+-- Keep both a neutral named export and the legacy UI export so the library
+-- works whether Matcha preserves the loadstring return value or not.
 UI = Library
+RabbitUI = Library
 
 return Library
