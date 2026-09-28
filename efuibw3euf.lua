@@ -303,6 +303,8 @@ local FrameAlpha = 1  -- global fade multiplier used during open/close
 local GlassSurfaceAlpha = 0.85
 
 local function GlassSurface(x, y, w, h, color, z, corner)
+    local windowOpacityFactor = ((State.Settings and State.Settings.WindowOpacity) or 82) / 100
+    local surfaceOpacityFactor = ((State.Settings and State.Settings.SurfaceOpacity) or 72) / 100
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
     local o, l = Take("Square")
     local depth = Layer(z)
@@ -1155,8 +1157,8 @@ local State = {
         KeybindOverlay = true,
         BackgroundEffects = true,
         BorderComet = true,
-        Notifications = true,
-        Tooltips = true,
+        WindowOpacity = 82,
+        SurfaceOpacity = 72,
         CompactOverlay = false,
     },
 
@@ -1656,7 +1658,7 @@ local function DrawGlassBorder(th)
     local radius = math.min(Layout.Corner, math.max(2, math.min(w, h) / 2 - 1))
 
     -- Bright white outline shared by the loading frame and the main window.
-    Stroke(x, y, w, h, Color3.new(1, 1, 1), 20, radius, 0.88)
+    Stroke(x, y, w, h, th.Accent, 20, radius, 0.88)
 
     if State.NoAnim then
         return
@@ -1780,7 +1782,7 @@ local function DrawFrame()
 
     Line(separatorX, Geometry.RailY + 1,
          separatorX, State.Y + State.H - 2,
-         Color3.new(1, 1, 1), 14, 1, 0.52)
+         th.Accent, 14, 1, 0.52)
 
     -- Single animated glass edge.
     DrawGlassBorder(th)
@@ -1959,9 +1961,9 @@ local function DrawTitleBar(title, subtitle)
     local rightStart = titleX + titleW + gap
 
     GradientRect(leftStart, railY, railW, 1,
-                 th.AccentA, th.TextDim, 32, 0.48)
+                 th.AccentA, th.Accent, 32, 0.48)
     GradientRect(rightStart, railY, railW, 1,
-                 th.TextDim, th.AccentB, 32, 0.48)
+                 th.Accent, th.AccentB, 32, 0.48)
 
     Text(title, titleX, titleY, th.Text, titleSize, FontBold,
          34, 0.98, titleW + 2)
@@ -4195,6 +4197,51 @@ local function TickTheme(dt)
     end
 end
 
+
+-- Additional premium global themes.
+Themes["Cyber"] = {
+    Name="Cyber", Bg=rgb(7,10,18), Bg2=rgb(11,16,28), Panel=rgb(12,18,30),
+    Card=rgb(14,21,35), Text=rgb(230,248,255), TextDim=rgb(126,157,177),
+    TextMuted=rgb(86,112,132), Divider=rgb(31,59,78),
+    Accent=rgb(0,229,255), AccentA=rgb(0,229,255), AccentB=rgb(163,73,255),
+    Danger=rgb(255,76,112), Success=rgb(57,230,151)
+}
+Themes["Bubblegum"] = {
+    Name="Bubblegum", Bg=rgb(24,15,29), Bg2=rgb(34,20,40), Panel=rgb(39,23,46),
+    Card=rgb(46,27,54), Text=rgb(255,240,250), TextDim=rgb(213,164,198),
+    TextMuted=rgb(157,111,145), Divider=rgb(91,51,80),
+    Accent=rgb(255,105,180), AccentA=rgb(255,105,180), AccentB=rgb(130,190,255),
+    Danger=rgb(255,86,116), Success=rgb(99,226,169)
+}
+Themes["Emerald"] = {
+    Name="Emerald", Bg=rgb(8,18,16), Bg2=rgb(11,27,23), Panel=rgb(13,32,27),
+    Card=rgb(16,39,33), Text=rgb(232,255,247), TextDim=rgb(137,188,171),
+    TextMuted=rgb(91,137,122), Divider=rgb(32,75,62),
+    Accent=rgb(55,232,154), AccentA=rgb(55,232,154), AccentB=rgb(77,199,255),
+    Danger=rgb(255,91,109), Success=rgb(55,232,154)
+}
+Themes["Crimson"] = {
+    Name="Crimson", Bg=rgb(20,9,12), Bg2=rgb(31,12,17), Panel=rgb(37,14,20),
+    Card=rgb(45,17,24), Text=rgb(255,239,241), TextDim=rgb(203,151,158),
+    TextMuted=rgb(148,98,106), Divider=rgb(83,34,43),
+    Accent=rgb(255,70,92), AccentA=rgb(255,70,92), AccentB=rgb(255,144,74),
+    Danger=rgb(255,70,92), Success=rgb(84,222,148)
+}
+Themes["Arctic"] = {
+    Name="Arctic", Bg=rgb(10,17,25), Bg2=rgb(14,25,36), Panel=rgb(17,31,44),
+    Card=rgb(20,37,52), Text=rgb(239,250,255), TextDim=rgb(153,188,207),
+    TextMuted=rgb(102,139,159), Divider=rgb(43,74,93),
+    Accent=rgb(115,210,255), AccentA=rgb(115,210,255), AccentB=rgb(174,147,255),
+    Danger=rgb(255,100,125), Success=rgb(94,224,170)
+}
+Themes["Sunset"] = {
+    Name="Sunset", Bg=rgb(24,13,17), Bg2=rgb(36,18,23), Panel=rgb(42,21,27),
+    Card=rgb(50,25,32), Text=rgb(255,242,235), TextDim=rgb(215,166,151),
+    TextMuted=rgb(158,112,101), Divider=rgb(91,50,46),
+    Accent=rgb(255,132,74), AccentA=rgb(255,132,74), AccentB=rgb(255,79,151),
+    Danger=rgb(255,77,102), Success=rgb(102,224,151)
+}
+
 local function SetThemeByName(name)
     for i, th in ipairs(Themes) do
         if th.Name == name then
@@ -4284,7 +4331,6 @@ local function TickNotifications(dt)
 end
 
 local function DrawNotifications()
-    if State.Settings and State.Settings.Notifications == false then return end
     local th = State.Theme
     local vp = Camera.ViewportSize
     local notW = 280
@@ -4825,13 +4871,13 @@ DrawKeybindOverlay = function()
     FrameAlpha = 1
 
     Rect(x, y, w, h, rgb(13, 16, 23), 331, 9, 0.96)
-    Stroke(x, y, w, h, Color3.new(1, 1, 1), 332, 9, 0.88)
+    Stroke(x, y, w, h, th.Accent, 332, 9, 0.88)
 
     Text("KEYBINDS", x + 14, y + 10, th.Text, 12, FontBold, 334, 1)
     Text("drag", x + w - 36, y + 12, th.TextDim, 8, FontSystem, 334, 0.55)
 
     Line(x + 12, y + headerH - 1, x + w - 12, y + headerH - 1,
-         Color3.new(1, 1, 1), 334, 1, 0.10)
+         th.Accent, 334, 1, 0.14)
 
     local rowY = y + headerH
     if #list == 0 then
@@ -4851,7 +4897,7 @@ DrawKeybindOverlay = function()
 
         if i > 1 then
             Line(x + 14, rowY, x + w - 14, rowY,
-                 Color3.new(1, 1, 1), 335, 1, 0.055)
+                 th.Accent, 335, 1, 0.08)
         end
 
         local titleMax = math.max(54, pillX - (x + 14) - 8)
@@ -4893,7 +4939,7 @@ local function EnsureGlobalSettingsTab(library)
     local appearance = Section.new(tab, "Appearance", "Global Shadow UI appearance", {})
     Controls.Dropdown(appearance, {
         Title = "Theme",
-        Options = {"Midnight", "Obsidian", "Burgundy"},
+        Options = {"Midnight", "Obsidian", "Burgundy", "Cyber", "Bubblegum", "Emerald", "Crimson", "Arctic", "Sunset"},
         Default = (State.Theme and State.Theme.Name) or "Midnight",
         Callback = function(value) SetThemeByName(value) end,
     })
@@ -4929,17 +4975,19 @@ local function EnsureGlobalSettingsTab(library)
         Default = State.Settings.KeybindOverlay,
         Callback = function(v) State.Settings.KeybindOverlay = v end,
     })
-    Controls.Toggle(hud, {
-        Title = "Notifications",
-        Description = "Allow Shadow UI notification toasts.",
-        Default = State.Settings.Notifications,
-        Callback = function(v) State.Settings.Notifications = v end,
+    Controls.Slider(hud, {
+        Title = "Window opacity",
+        Description = "Controls how transparent or solid the main glass window is.",
+        Min = 35, Max = 100, Default = State.Settings.WindowOpacity, Step = 1,
+        Suffix = "%",
+        Callback = function(v) State.Settings.WindowOpacity = v end,
     })
-    Controls.Toggle(hud, {
-        Title = "Tooltips",
-        Description = "Show contextual hover tooltips.",
-        Default = State.Settings.Tooltips,
-        Callback = function(v) State.Settings.Tooltips = v end,
+    Controls.Slider(hud, {
+        Title = "Surface opacity",
+        Description = "Controls the strength of panels, cards and internal surfaces.",
+        Min = 30, Max = 100, Default = State.Settings.SurfaceOpacity, Step = 1,
+        Suffix = "%",
+        Callback = function(v) State.Settings.SurfaceOpacity = v end,
     })
 
     local behavior = Section.new(tab, "Behavior", "Window and navigation preferences", {})
@@ -5017,7 +5065,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v34-GLOBAL-SETTINGS"
+Library.Version       = "v35-THEMED-SETTINGS-SHOWCASE"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5203,7 +5251,7 @@ end)
 
 
 
-Library.Version = "v34-GLOBAL-SETTINGS"
+Library.Version = "v35-THEMED-SETTINGS-SHOWCASE"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
