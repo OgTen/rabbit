@@ -2886,7 +2886,7 @@ local function MeasureSection(section, w)
     local collapse = Clamp(section._collapse or 0, 0, 1)
     local visiblePanelH = fullPanelH * (1 - collapse)
 
-    return headerH + math.max(4, visiblePanelH)
+    return headerH + math.max(0, visiblePanelH)
 end
 
 local function DrawSection(section, x, y, w)
@@ -2898,7 +2898,7 @@ local function DrawSection(section, x, y, w)
     -- Calculate the full panel height separately from the animated visible height.
     local fullH = MeasureSection(section, w)
     local collapse = Clamp(section._collapse or 0, 0, 1)
-    local panelH = math.max(4, fullH - headerH)
+    local panelH = math.max(0, fullH - headerH)
 
     -- Reconstruct the uncollapsed panel height for clipping/reveal calculations.
     local contentH = 0
@@ -2918,7 +2918,7 @@ local function DrawSection(section, x, y, w)
     end
     if contentH > 0 then contentH = contentH - Layout.RowGapY end
     local fullPanelH = Layout.SectionPadY + math.max(Layout.RowHeight, contentH) + Layout.SectionPadY
-    local visiblePanelH = math.max(4, fullPanelH * (1 - collapse))
+    local visiblePanelH = math.max(0, fullPanelH * (1 - collapse))
 
     section._layoutX = x
     section._layoutY = y
@@ -2937,8 +2937,10 @@ local function DrawSection(section, x, y, w)
 
     if collapse >= 0.985 then return end
 
-    FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
-    Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+    if visiblePanelH > 0 then
+        FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
+        Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+    end
 
     local innerX = x + Layout.SectionPadX
     local innerY = panelY + Layout.SectionPadY
@@ -5104,7 +5106,7 @@ end)
 
 
 
-Library.Version = "v21"
+Library.Version = "v23"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
