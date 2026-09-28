@@ -2711,6 +2711,7 @@ end
 
 local WantTooltip
 local DrawKeybindOverlay
+local UpdateKeybindOverlayInput
 
 local ContentCursor = { y = 0 }
 
@@ -4722,7 +4723,7 @@ local function GetKeybindOverlayGeometry()
     return x, y, w, h, headerH, rowH, list
 end
 
-local function UpdateKeybindOverlayInput()
+UpdateKeybindOverlayInput = function()
     local x, y, w, h = GetKeybindOverlayGeometry()
     local hover = MouseIn(x, y, w, h)
 
@@ -4734,7 +4735,6 @@ local function UpdateKeybindOverlayInput()
             KeybindHUD.Dragging = false
         end
         Input.Click = false
-        Input.RightClick = false
         return
     end
 
@@ -4745,7 +4745,6 @@ local function UpdateKeybindOverlayInput()
         KeybindHUD.X = x
         KeybindHUD.Y = y
         Input.Click = false
-        Input.RightClick = false
     end
 end
 
@@ -4931,7 +4930,6 @@ local function AttachControl(parentType, methodName, ctorName)
     if not ctor then return end
     parentType[methodName] = function(self, opts)
         local obj = ctor(self, opts)
-        CaptureDefault(obj)
         return obj
     end
 end
@@ -4985,7 +4983,6 @@ for _, ctrlName in ipairs({
     if ctor then
         Base["Add" .. ctrlName] = function(self, opts)
             local obj = ctor(self.Parent, opts)
-            CaptureDefault(obj)
             return obj
         end
     end
@@ -5009,7 +5006,7 @@ end)
 
 
 
-Library.Version = "v25"
+Library.Version = "v26"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
