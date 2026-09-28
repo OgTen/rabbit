@@ -5075,4 +5075,9 @@ end)
 
 
 
+-- Matcha-friendly public export.
+-- The global export is intentional because some Matcha loadstring contexts
+-- do not reliably preserve the return value of the executed chunk.
+UI = Library
+
 return Library
