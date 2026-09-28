@@ -459,7 +459,6 @@ local FrameAlpha = 1  -- global fade multiplier used during open/close
 -- not share the normal Rect() alpha value, so changing the glass strength
 -- cannot alter buttons, sliders, overlays, text, or other controls.
 local GlassSurfaceAlpha = 0.85
-local InternalSurfaceAlpha = 0.72
 
 local function GlassSurface(x, y, w, h, color, z, corner)
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
@@ -1343,7 +1342,6 @@ local State = {
         BackgroundEffects = true,
         BorderComet = true,
         WindowOpacity = 82,
-        SurfaceOpacity = 72,
         CompactOverlay = false,
     },
 
@@ -1355,8 +1353,8 @@ local State = {
     LogoSize       = 30,
     BackgroundImage = nil,
     BackgroundImageSource = nil,
-    BackgroundImageOpacity = 0.28,
-    BackgroundImageRounding = 8,
+    OpenDropdownWheelRect = nil,
+    ActiveDropdown = nil,
     Background     = "none",
     BackgroundOptions = {},
 
@@ -1674,6 +1672,11 @@ local function HandleWheel(tab)
     if not tab then return end
     if not MouseIn(Geometry.ContentX, Geometry.ContentY,
                    Geometry.ContentW, Geometry.ContentH) then return end
+
+    local popup = State.OpenDropdownWheelRect
+    if popup and MouseIn(popup.X, popup.Y, popup.W, popup.H) then
+        return
+    end
 
     local delta = Input.Wheel or 0
     local pgUp = Keys.PageUp and Keys.PageUp.Click
@@ -2040,8 +2043,8 @@ local function DrawFrame(hideBackgroundImage)
         DrawPicture(State.BackgroundImage,
                     State.X, State.Y, State.W, State.H,
                     Layer(11),
-                    math.max(0, math.min(1, State.BackgroundImageOpacity or 0.28)) * FrameAlpha,
-                    State.BackgroundImageRounding or Layout.Corner)
+                    GlassSurfaceAlpha * FrameAlpha,
+                    Layout.Corner)
     end
 
     -- A restrained top reflection. This follows the same outer silhouette and
@@ -3204,13 +3207,12 @@ local function DrawSection(section, x, y, w)
     local viewportBottom = ActiveClipBottom or math.huge
     local headerVisible = (y >= viewportTop and y + headerH <= viewportBottom)
 
-    -- Drawing primitives cannot be truly scissored in Matcha, so never draw a
-    -- section surface/control unless the primitive fits wholly inside the
-    -- content viewport. The section's visual panel is shortened at the bottom.
+    -- Matcha has no native scissor rectangle. Crop section surfaces to the
+    -- viewport and reveal/hide child primitives individually as they cross it.
     local clippedPanelTop = math.max(panelY, viewportTop)
     local clippedPanelBottom = math.min(panelY + visiblePanelH, viewportBottom)
     local clippedPanelH = math.max(0, clippedPanelBottom - clippedPanelTop)
-    local panelVisible = clippedPanelH > 0 and panelY >= viewportTop
+    local panelVisible = clippedPanelH > 0
     if not headerVisible and not panelVisible then return end
 
     if headerVisible then
@@ -3229,8 +3231,15 @@ local function DrawSection(section, x, y, w)
     if collapse >= 0.985 then return end
 
     if panelVisible then
-        FrostedSurface(x, panelY, w, clippedPanelH, State.Theme.Panel, 40, Layout.SectionCorner)
-        Stroke(x, panelY, w, clippedPanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+        -- Draw only the visible slice. This makes the section move through the
+        -- viewport like a normal page instead of disappearing as one block.
+        local clippedCorner = (clippedPanelTop == panelY and
+                               clippedPanelBottom == panelY + visiblePanelH)
+                               and Layout.SectionCorner or 0
+        FrostedSurface(x, clippedPanelTop, w, clippedPanelH,
+                       State.Theme.Panel, 40, clippedCorner)
+        Stroke(x, clippedPanelTop, w, clippedPanelH,
+               State.Theme.Stroke, 41, clippedCorner, 0.42)
     end
 
     local innerX = x + Layout.SectionPadX
@@ -3623,7 +3632,15 @@ Register("Dropdown", function(parent, opts)
         end
 
         if self._openAnim > 0.02 then
-            self:_DrawList(fieldX, fieldY + h + 3, fieldW, th)
+            local listY = fieldY + h + 3
+            local listH = math.min(#self.Options, 8) * 22 + 8
+            if self._open then
+                State.OpenDropdownWheelRect = {
+                    X = fieldX, Y = listY, W = fieldW, H = listH
+                }
+                State.ActiveDropdown = self
+            end
+            self:_DrawList(fieldX, listY, fieldW, th)
         end
     end
 
@@ -3678,16 +3695,28 @@ Register("Dropdown", function(parent, opts)
         end
 
         -- scrollbar hint (if more options than fit)
+        if maxScroll <= 0 then self._scrollbarGeom = nil end
         if maxScroll > 0 then
             local barW = 5
             local sx = x + w - barW - 3
             local trackY = y + 4
             local trackH = listH - 8
-            Rect(sx, trackY, barW, trackH, th.Track, 65, barW / 2, 0.62)
+            Rect(sx, trackY, barW, trackH, th.Track, 65, barW / 2,
+                 0.62 * self._openAnim)
             local thumbH = math.max(14, trackH * (maxVisible / #self.Options))
             local thumbY = trackY + (trackH - thumbH) * (self._listScroll / maxScroll)
+
+            -- Save the exact rectangles that are being drawn. Input uses these
+            -- same coordinates so the visible scrollbar and drag hitbox can
+            -- never drift apart because of section/content layout offsets.
+            self._scrollbarGeom = {
+                X = sx, TrackY = trackY, TrackH = trackH,
+                BarW = barW, ThumbY = thumbY, ThumbH = thumbH,
+                Travel = math.max(1, trackH - thumbH), MaxScroll = maxScroll,
+            }
+
             Rect(sx, thumbY, barW, thumbH, th.Accent, 66, barW / 2,
-                 self._scrollDrag and 1 or 0.9)
+                 (self._scrollDrag and 1 or 0.9) * self._openAnim)
         end
     end
 
@@ -3706,16 +3735,32 @@ Register("Dropdown", function(parent, opts)
             local listH = math.min(#self.Options, maxVisible) * rowH + 8
             local listY = fieldY + h + 3
 
-            -- draggable list scrollbar; no wheel support required.
+            -- The open popup owns wheel input while the cursor is over it.
+            -- Consume the wheel here so the underlying tab cannot scroll too.
             local maxScroll = math.max(0, #self.Options - maxVisible)
-            if maxScroll > 0 then
-                local barW = 5
-                local sx = fieldX + fieldW - barW - 3
-                local trackY = listY + 4
-                local trackH = listH - 8
-                local thumbH = math.max(14, trackH * (maxVisible / #self.Options))
-                local travel = math.max(1, trackH - thumbH)
+            if maxScroll > 0 and MouseIn(fieldX, listY, fieldW, listH) then
+                local wheel = Input.Wheel or 0
+                if wheel ~= 0 then
+                    self._listScrollTo = Clamp(self._listScrollTo - wheel, 0, maxScroll)
+                    Input.Wheel = 0
+                end
+            end
+
+            -- Draggable list scrollbar. Use the geometry captured by
+            -- _DrawList() rather than recalculating a second set of positions.
+            local sg = self._scrollbarGeom
+            if maxScroll > 0 and sg then
+                local sx = sg.X
+                local trackY = sg.TrackY
+                local trackH = sg.TrackH
+                local barW = sg.BarW
+                local thumbH = sg.ThumbH
+                local travel = sg.Travel
                 local thumbY = trackY + travel * (self._listScrollTo / maxScroll)
+
+                -- Slightly wider than the 5px visual bar so it is comfortable
+                -- to grab, but centered directly on the visible scrollbar.
+                local grabPad = 5
 
                 if self._scrollDrag then
                     if Input.Down then
@@ -3727,12 +3772,14 @@ Register("Dropdown", function(parent, opts)
                     else
                         self._scrollDrag = false
                     end
-                elseif Input.Click and MouseIn(sx - 4, thumbY - 2, barW + 8, thumbH + 4) then
+                elseif Input.Click and MouseIn(sx - grabPad, thumbY - 2,
+                                                barW + grabPad * 2, thumbH + 4) then
                     self._scrollDrag = true
                     self._scrollDragOffsetY = Input.Y - thumbY
                     Input.Click = false
                     return
-                elseif Input.Click and MouseIn(sx - 4, trackY, barW + 8, trackH) then
+                elseif Input.Click and MouseIn(sx - grabPad, trackY,
+                                                barW + grabPad * 2, trackH) then
                     local newY = Clamp(Input.Y - thumbH / 2, trackY, trackY + travel)
                     self._listScrollTo = ((newY - trackY) / travel) * maxScroll
                     self._listScroll = self._listScrollTo
@@ -4468,9 +4515,77 @@ end
 --  CONTENT INPUT  --  routes clicks/wheel into the active tab's rows
 -- ============================================================================
 
+local function UpdateDropdownScrollbarInput()
+    local dropdown = State.ActiveDropdown
+    if not dropdown or not dropdown._open then
+        if dropdown then dropdown._scrollDrag = false end
+        State.ActiveDropdown = nil
+        return false
+    end
+
+    local sg = dropdown._scrollbarGeom
+    if not sg or not sg.MaxScroll or sg.MaxScroll <= 0 then
+        dropdown._scrollDrag = false
+        return false
+    end
+
+    local trackX = sg.X
+    local trackY = sg.TrackY
+    local trackW = sg.BarW
+    local trackH = sg.TrackH
+    local thumbH = sg.ThumbH
+    local travel = math.max(1, sg.Travel)
+    local maxScroll = sg.MaxScroll
+    local thumbY = trackY + travel * ((dropdown._listScrollTo or 0) / maxScroll)
+
+    -- Same hitbox expansion used by the proven main content scrollbar.
+    local hitX = trackX - 3
+    local hitW = trackW + 6
+
+    if dropdown._scrollDrag then
+        if Input.Down then
+            local newThumbY = Clamp(Input.Y - dropdown._scrollDragOffsetY,
+                                    trackY, trackY + travel)
+            local frac = (newThumbY - trackY) / travel
+            dropdown._listScrollTo = Clamp(frac * maxScroll, 0, maxScroll)
+            dropdown._listScroll = dropdown._listScrollTo
+            Input.Click = false
+            return true
+        else
+            dropdown._scrollDrag = false
+        end
+    end
+
+    if Input.Click and MouseIn(hitX, thumbY - 2, hitW, thumbH + 4) then
+        dropdown._scrollDrag = true
+        dropdown._scrollDragOffsetY = Input.Y - thumbY
+        Input.Click = false
+        return true
+    end
+
+    -- Match the main scrollbar: clicking the empty track jumps there and
+    -- immediately begins a drag using the centered thumb offset.
+    if Input.Click and MouseIn(hitX, trackY, hitW, trackH) then
+        local centered = Clamp(Input.Y - thumbH / 2, trackY, trackY + travel)
+        local frac = (centered - trackY) / travel
+        dropdown._listScrollTo = Clamp(frac * maxScroll, 0, maxScroll)
+        dropdown._listScroll = dropdown._listScrollTo
+        dropdown._scrollDrag = true
+        dropdown._scrollDragOffsetY = thumbH / 2
+        Input.Click = false
+        return true
+    end
+
+    return false
+end
+
 local function InputContent()
     local tab = State.Tabs[State.ActiveIndex]
     if not tab then return end
+
+    -- Dropdown flyouts are overlays, so their scrollbar must receive input
+    -- globally rather than through the section row that spawned them.
+    if UpdateDropdownScrollbarInput() then return end
 
     UpdateContentScrollbarInput(tab)
     if ContentScrollbarDrag.Active then return end
@@ -5583,16 +5698,7 @@ local function EnsureGlobalSettingsTab(library)
             GlassSurfaceAlpha = math.max(0.20, math.min(1, v / 100))
         end,
     })
-    Controls.Slider(hud, {
-        Title = "Surface opacity",
-        Description = "Controls the strength of panels, cards and internal surfaces.",
-        Min = 30, Max = 100, Default = State.Settings.SurfaceOpacity, Step = 1,
-        Suffix = "%",
-        Callback = function(v)
-            State.Settings.SurfaceOpacity = v
-            InternalSurfaceAlpha = math.max(0.20, math.min(1, v / 100))
-        end,
-    })
+
 
     local behavior = Section.new(tab, "Behavior", "Window and navigation preferences", {})
     Controls.Toggle(behavior, {
@@ -5631,7 +5737,6 @@ local Library = {}
 function Library:CreateWindow(opts)
     opts = opts or {}
     GlassSurfaceAlpha = math.max(0.20, math.min(1, (State.Settings.WindowOpacity or 82) / 100))
-    InternalSurfaceAlpha = math.max(0.20, math.min(1, (State.Settings.SurfaceOpacity or 72) / 100))
 
     local size = opts.Size or opts.size
     if type(size) == "userdata" or type(size) == "table" then
@@ -5663,16 +5768,6 @@ function Library:CreateWindow(opts)
         State.BackgroundImage = LoadPicture(backgroundImageSource, "background")
     end
 
-    local backgroundImageOpacity = tonumber(opts.BackgroundImageOpacity or opts.backgroundImageOpacity)
-    if backgroundImageOpacity ~= nil then
-        if backgroundImageOpacity > 1 then backgroundImageOpacity = backgroundImageOpacity / 100 end
-        State.BackgroundImageOpacity = math.max(0, math.min(1, backgroundImageOpacity))
-    end
-
-    local backgroundImageRounding = tonumber(opts.BackgroundImageRounding or opts.backgroundImageRounding)
-    if backgroundImageRounding ~= nil then
-        State.BackgroundImageRounding = math.max(0, math.min(32, backgroundImageRounding))
-    end
     if opts.MenuKey or opts.menuKey then State.MenuKey = string.lower(tostring(opts.MenuKey or opts.menuKey)) end
     if opts.NoAnim ~= nil or opts.noAnim ~= nil then State.NoAnim = (opts.NoAnim ~= nil and opts.NoAnim or opts.noAnim) and true or false end
     if opts.Background ~= nil or opts.background ~= nil then State.Background = NormalizeBackground(opts.Background or opts.background) end
@@ -5698,7 +5793,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46-CUSTOM-IMAGE-BACKGROUND"
+Library.Version       = "v46.4-DROPDOWN-GLOBAL-DRAG-PAGE-CLIP"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5897,7 +5992,7 @@ end)
 
 
 
-Library.Version = "v46-CUSTOM-IMAGE-BACKGROUND"
+Library.Version = "v46.4-DROPDOWN-GLOBAL-DRAG-PAGE-CLIP"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
