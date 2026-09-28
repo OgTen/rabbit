@@ -2821,6 +2821,7 @@ end
 
 local WantTooltip
 local DrawKeybindManager
+local IsTooltipControl
 
 local ContentCursor = { y = 0 }
 
@@ -4389,7 +4390,7 @@ local Tooltip = {
     Hovered = false,
 }
 
-local function IsTooltipControl(ctrl)
+IsTooltipControl = function(ctrl)
     if not ctrl then return false end
     return ctrl.Kind == "Toggle"
         or ctrl.Kind == "Button"
