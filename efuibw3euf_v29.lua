@@ -2819,18 +2819,16 @@ local function DrawSection(section, x, y, w)
     local arrow = collapse > 0.5 and ">" or "v"
     Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
 
-    -- Header separator: starts to the right of the title so it never runs
-    -- underneath or through the section text, then fades toward the end.
-    local titleX = x + 14
-    local titleW = TextWidth(section.Title, Layout.TitleSize, FontBold)
-    local lineX = titleX + titleW + 8
-    local lineW = math.max(0, (x + w) - lineX)
+    -- Header separator: begins at the left edge of the title area and fades
+    -- smoothly toward the end of the section. The title is drawn over it.
+    local lineX = x + 14
+    local lineW = math.max(0, w - 14)
     if lineW > 8 then
         GradientRect(lineX, y + math.floor(Layout.SectionTitleH * 0.55), lineW, 1,
                      State.Theme.Divider, State.Theme.Base, 51, 0.72, 32)
     end
 
-    Text(section.Title, titleX, y, State.Theme.Text, Layout.TitleSize, FontBold,
+    Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, FontBold,
          50, 0.98, math.max(1, w - 14))
 
     if section.Description and section.Description ~= "" then
