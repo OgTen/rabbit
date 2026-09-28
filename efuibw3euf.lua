@@ -1150,7 +1150,6 @@ local State = {
 
     -- notifications queue
     Notifications = {},
-    ContextMenu = nil,
 }
 
 
@@ -2707,115 +2706,6 @@ local function LayoutInline(row, x, y, w)
     return maxH
 end
 
-local OpenContextMenu
-
-local function InputInline(row, x, y, w)
-    for i = 1, #row.Cells do
-        local ctrl = row.Cells[i]
-        if not ctrl.Hidden then
-            local cx = ctrl._inlineX or x
-            local cy = ctrl._inlineY or y
-            local cw = ctrl._inlineW or w
-            if Input.RightClick and ctrl.Enabled ~= false and MouseIn(cx, cy, cw, ctrl.Height or Layout.RowHeight) then
-                OpenContextMenu(ctrl)
-                Input.RightClick = false
-                return
-            end
-            ctrl:Input(cx, cy, cw)
-        end
-    end
-end
-
--- ============================================================================
---  CONTEXT MENU  --  right-click controls for reset/copy actions
--- ============================================================================
-
-local function ContextValueText(row)
-    if not row or not row.GetValue then return nil end
-    local ok, a, b = pcall(row.GetValue, row)
-    if not ok or a == nil then return nil end
-    if typeof and typeof(a) == "Color3" then
-        return string.format("#%02X%02X%02X", math.floor(a.R * 255 + 0.5), math.floor(a.G * 255 + 0.5), math.floor(a.B * 255 + 0.5))
-    end
-    if type(a) == "table" and a[1] ~= nil then return tostring(a[1]) .. " - " .. tostring(a[2]) end
-    if b ~= nil then return tostring(a) .. " - " .. tostring(b) end
-    return tostring(a)
-end
-
-local function CaptureDefault(row)
-    if not row or not row.GetValue then return end
-    local ok, a, b = pcall(row.GetValue, row)
-    if not ok then return end
-    row._defaultA = a
-    row._defaultB = b
-    if row.Kind == "ColorPicker" then row._defaultAlpha = row._alpha end
-end
-
-local function ResetControl(row)
-    if not row or not row.SetValue then return end
-    pcall(function()
-        if row.Kind == "RangeSlider" then
-            row:SetValue(row._defaultA, row._defaultB)
-        elseif row.Kind == "ColorPicker" then
-            row:SetValue(row._defaultA)
-            row._alpha = row._defaultAlpha or 1
-        elseif row._defaultA ~= nil then
-            row:SetValue(row._defaultA)
-        end
-    end)
-end
-
-OpenContextMenu = function(row)
-    local value = ContextValueText(row)
-    if not value then return end
-    State.ContextMenu = { Row = row, X = Input.X, Y = Input.Y, W = 190, Value = value }
-    State.Popup = State.ContextMenu
-    ClearTooltip()
-end
-
-local function DrawContextMenu()
-    local menu = State.ContextMenu
-    if not menu then return end
-    local th = State.Theme
-    local w, h = menu.W, 82
-    local vp = Camera.ViewportSize
-    local x = math.min(menu.X, vp.X - w - 8)
-    local y = math.min(menu.Y, vp.Y - h - 8)
-    local rowH = 24
-
-    Rect(x + 2, y + 3, w, h, Color3.new(0,0,0), 320, 8, 0.3)
-    Rect(x, y, w, h, th.Base, 321, 8, 0.98)
-    Stroke(x, y, w, h, th.Stroke, 322, 8, 0.7)
-
-    local actions = { "Reset to default", "Copy value", "Close" }
-    for i, label in ipairs(actions) do
-        local ry = y + 7 + (i - 1) * rowH
-        local hover = MouseIn(x + 5, ry, w - 10, rowH - 2)
-        if hover then Rect(x + 5, ry, w - 10, rowH - 2, th.Accent, 323, 5, 0.12) end
-        Text(label, x + 12, ry + 5, hover and th.Accent or th.Text, 12, FontSystem, 324, 0.95)
-    end
-
-    if Input.Click then
-        if MouseIn(x + 5, y + 7, w - 10, rowH - 2) then
-            ResetControl(menu.Row)
-            State.ContextMenu = nil
-            State.Popup = nil
-        elseif MouseIn(x + 5, y + 7 + rowH, w - 10, rowH - 2) then
-            pcall(function() if setclipboard then setclipboard(menu.Value) end end)
-            State.ContextMenu = nil
-            State.Popup = nil
-        elseif MouseIn(x + 5, y + 7 + rowH * 2, w - 10, rowH - 2) then
-            State.ContextMenu = nil
-            State.Popup = nil
-        elseif not MouseIn(x, y, w, h) then
-            State.ContextMenu = nil
-            State.Popup = nil
-        end
-        Input.Click = false
-    end
-end
-
--- ============================================================================
 --  CONTENT  --  generic render pass: walks a tab's rows and draws them
 -- ============================================================================
 
@@ -2927,6 +2817,16 @@ local function DrawSection(section, x, y, w)
 
     local arrow = collapse > 0.5 and ">" or "v"
     Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
+
+    -- Header separator: begins at the left edge of the title area and fades
+    -- smoothly toward the end of the section. The title is drawn over it.
+    local lineX = x + 14
+    local lineW = math.max(0, w - 14)
+    if lineW > 8 then
+        GradientRect(lineX, y + math.floor(Layout.SectionTitleH * 0.55), lineW, 1,
+                     State.Theme.Divider, State.Theme.Base, 51, 0.72, 32)
+    end
+
     Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, FontBold,
          50, 0.98, math.max(1, w - 14))
 
@@ -3049,12 +2949,6 @@ end
 
 function InputRow(row, x, y, w)
     if row.Hidden then return 0 end
-
-    if Input.RightClick and row.Enabled ~= false and MouseIn(x, y, w, row.Height or Layout.RowHeight) then
-        OpenContextMenu(row)
-        Input.RightClick = false
-        return row.Height or Layout.RowHeight
-    end
 
     if IsSection(row) then
         InputSection(row)
@@ -4149,7 +4043,7 @@ local function InputContent()
         end
     end
 
-    if Input.Click and State.Popup and not State.ContextMenu then
+    if Input.Click and State.Popup then
         State.Popup = nil
     end
 end
@@ -4606,7 +4500,6 @@ local function ToggleUI()
         ClearFocus()
         CancelCapture()
         State.Popup = nil
-        State.ContextMenu = nil
         ClearTooltip()
     end
 end
@@ -4694,6 +4587,7 @@ local function Render()
         -- but notifications/tooltips still show
         TickNotifications(State.Delta)
         DrawNotifications()
+        UpdateKeybindOverlayInput()
         DrawKeybindOverlay()
         HideUnused()
         return
@@ -4723,9 +4617,12 @@ local function Render()
     DrawContent()
     TickTooltip(State.Delta)
 
+    -- The keybind HUD is its own persistent input surface.
+    UpdateKeybindOverlayInput()
+
     -- Do not interact with partially revealed controls. They become live once
     -- the reveal reaches the final frame.
-    if not startupIsReveal and not State.ContextMenu then
+    if not startupIsReveal then
         InputContent()
     end
 
@@ -4735,7 +4632,6 @@ local function Render()
     TickNotifications(State.Delta)
     DrawNotifications()
     DrawTooltip()
-    DrawContextMenu()
     DrawKeybindOverlay()
 
     -- HUD boxes
@@ -4803,52 +4699,102 @@ local function CollectKeybinds()
     return out
 end
 
-DrawKeybindOverlay = function()
-    local th = State.Theme
+local KeybindHUD = {
+    X = nil,
+    Y = 18,
+    Dragging = false,
+    DragOffsetX = 0,
+    DragOffsetY = 0,
+}
+
+local function GetKeybindOverlayGeometry()
     local vp = Camera.ViewportSize
     local list = CollectKeybinds()
-
-    -- Persistent HUD overlay: always visible, including while the main window
-    -- is hidden with the menu key. It is intentionally not a popup and has no
-    -- close button or interaction.
     local maxRows = math.min(#list, 8)
     local rowH = 24
-    local headerH = 28
-    local w = 190
-    local h = headerH + math.max(1, maxRows) * rowH + 10
-    local x = math.max(10, vp.X - w - 18)
-    local y = 18
+    local headerH = 30
+    local w = 210
+    local h = headerH + math.max(1, maxRows) * rowH + 12
+    local x = KeybindHUD.X
+    if x == nil then x = math.max(10, vp.X - w - 18) end
+    x = math.max(6, math.min(x, math.max(6, vp.X - w - 6)))
+    local y = math.max(6, math.min(KeybindHUD.Y, math.max(6, vp.Y - h - 6)))
+    return x, y, w, h, headerH, rowH, list
+end
 
-    Rect(x + 3, y + 4, w, h, Color3.new(0, 0, 0), 330, 10, 0.35)
-    Rect(x, y, w, h, th.Base, 331, 10, 0.94)
-    Stroke(x, y, w, h, th.Stroke, 332, 10, 0.75)
-    Text("Keybinds", x + 12, y + 8, th.Text, 13, FontBold, 333, 1)
+local function UpdateKeybindOverlayInput()
+    local x, y, w, h = GetKeybindOverlayGeometry()
+    local hover = MouseIn(x, y, w, h)
 
-    local rowY = y + headerH
-    if #list == 0 then
-        Text("No keybinds", x + 12, rowY + 5, th.TextMuted, 10, FontSystem, 334, 0.8)
+    if KeybindHUD.Dragging then
+        if Input.Down then
+            KeybindHUD.X = Input.X - KeybindHUD.DragOffsetX
+            KeybindHUD.Y = Input.Y - KeybindHUD.DragOffsetY
+        else
+            KeybindHUD.Dragging = false
+        end
+        Input.Click = false
+        Input.RightClick = false
         return
     end
 
-    for i = 1, maxRows do
+    if hover and Input.Click then
+        KeybindHUD.Dragging = true
+        KeybindHUD.DragOffsetX = Input.X - x
+        KeybindHUD.DragOffsetY = Input.Y - y
+        KeybindHUD.X = x
+        KeybindHUD.Y = y
+        Input.Click = false
+        Input.RightClick = false
+    end
+end
+
+DrawKeybindOverlay = function()
+    local th = State.Theme
+    local x, y, w, h, headerH, rowH, list = GetKeybindOverlayGeometry()
+
+    -- High-contrast persistent HUD. It remains visible while the main UI is
+    -- hidden and can be dragged from anywhere inside the box.
+    Rect(x + 3, y + 4, w, h, Color3.new(0, 0, 0), 330, 10, 0.48)
+    Rect(x, y, w, h, th.Base, 331, 10, 0.98)
+    Stroke(x, y, w, h, th.Accent, 332, 10, 0.8)
+    Rect(x + 1, y + 1, w - 2, 2, th.Accent, 333, 9, 0.9)
+
+    Text("KEYBINDS", x + 12, y + 8, th.Text, 13, FontBold, 334, 1)
+    Text("DRAG TO MOVE", x + w - 82, y + 9, th.TextDim, 8, FontSystem, 334, 0.8)
+
+    local rowY = y + headerH
+    if #list == 0 then
+        Text("No keybinds", x + 12, rowY + 5, th.TextDim, 11, FontSystem, 335, 0.9)
+        return
+    end
+
+    for i = 1, math.min(#list, 8) do
         local entry = list[i]
         local rowX = x + 8
         local rowW = w - 16
         if i % 2 == 0 then
-            Rect(rowX, rowY, rowW, rowH, th.Base, 334, 5, 0.28)
+            Rect(rowX, rowY, rowW, rowH, th.Panel, 335, 5, 0.55)
         end
 
         local title = entry.Path or "Keybind"
-        local value = tostring(entry.Row and entry.Row.Value or "none")
-        Text(title, x + 14, rowY + 6, th.Text, 10, FontSystem, 335, 0.9, w - 72)
+        local value = string.upper(tostring(entry.Row and entry.Row.Value or "none"))
+        local valueW = TextWidth(value, 11, FontMono)
+        local titleMax = math.max(40, w - 38 - valueW)
 
-        local valueW = TextWidth(string.upper(value), 10, FontMono)
-        Text(string.upper(value), x + w - valueW - 14, rowY + 6, th.Accent, 10, FontMono, 335, 1)
+        Text(title, x + 14, rowY + 6, th.Text, 11, FontSystem, 336, 1, titleMax)
+
+        Rect(x + w - valueW - 20, rowY + 4, valueW + 10, 16,
+             th.Accent, 337, 4, 0.12)
+        Text(value, x + w - valueW - 15, rowY + 6,
+             th.Accent, 11, FontMono, 338, 1, valueW + 5)
+
         rowY = rowY + rowH
     end
 
-    if #list > maxRows then
-        Text("+" .. tostring(#list - maxRows) .. " more", x + 14, rowY + 2, th.TextMuted, 9, FontSystem, 335, 0.7)
+    if #list > 8 then
+        Text("+" .. tostring(#list - 8) .. " more", x + 14, rowY + 2,
+             th.TextDim, 9, FontSystem, 339, 0.8)
     end
 end
 
@@ -4899,6 +4845,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
+Library.Version       = "v25"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5062,7 +5009,7 @@ end)
 
 
 
-Library.Version = "v21"
+Library.Version = "v25"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
