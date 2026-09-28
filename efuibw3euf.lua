@@ -4821,6 +4821,7 @@ end
 -- ============================================================================
 
 local Library = {}
+UI = Library
 
 -- CreateWindow is the public constructor used by showcase/user scripts.
 -- The startup animation is part of the same window.
@@ -5027,6 +5028,6 @@ end)
 
 
 -- Matcha drops top-level return values from loadstring() executions.
--- Export through a neutral internal global so external loaders can retrieve the library.
-_G.__UI_LIBRARY_EXPORT = Library
+-- Publish through the active execution environment so a caller can retrieve
+-- the library even when Matcha gives the loaded chunk a separate global table.
 return Library
