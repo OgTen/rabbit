@@ -2907,6 +2907,7 @@ local DrawKeybindOverlay
 local UpdateKeybindOverlayInput
 local DrawPerformanceOverlay
 local UpdatePerformanceOverlayInput
+local TickPerformanceOverlay
 
 local ContentCursor = { y = 0 }
 
@@ -5155,7 +5156,7 @@ local PerformanceHUD = {
     AccumFrames = 0,
 }
 
-local function TickPerformanceOverlay(dt)
+TickPerformanceOverlay = function(dt)
     dt = math.max(0.0001, tonumber(dt) or (1 / 60))
     PerformanceHUD.AccumTime = PerformanceHUD.AccumTime + dt
     PerformanceHUD.AccumFrames = PerformanceHUD.AccumFrames + 1
@@ -5428,7 +5429,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v40-HOTKEYS-PERFORMANCE"
+Library.Version       = "v40.1-PERFORMANCE-SCOPE-FIX"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5622,7 +5623,7 @@ end)
 
 
 
-Library.Version = "v40-HOTKEYS-PERFORMANCE"
+Library.Version = "v40.1-PERFORMANCE-SCOPE-FIX"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
