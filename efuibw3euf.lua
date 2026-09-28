@@ -37,6 +37,29 @@ local FontMetrics = {
     [FontPixel]  = 0.50,
 }
 
+-- Matcha's complete Drawing.Fonts set currently exposed by this library.
+-- Overlay APIs accept these names case-insensitively.
+local OverlayFonts = {
+    system = FontSystem,
+    systembold = FontBold,
+    bold = FontBold,
+    ui = FontUI,
+    monospace = FontMono,
+    mono = FontMono,
+    pixel = FontPixel,
+}
+
+local function ResolveOverlayFont(value, fallback)
+    if value == nil then return fallback or FontBold end
+    if type(value) ~= "string" then
+        -- Also allow callers to pass Drawing.Fonts values directly.
+        return value
+    end
+    local key = string.lower(value)
+    key = string.gsub(key, "[%s_%-]", "")
+    return OverlayFonts[key] or fallback or FontBold
+end
+
 -- ============================================================================
 --  THEME  --  dark glass with subtle accent wash
 -- ============================================================================
@@ -2410,56 +2433,88 @@ local function DrawTitleBar(title, subtitle)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
 
-    -- Persistent window logo in the top-left branding area.
+    -- Product-style command header: compact brand identity on the left,
+    -- contextual status on the right, rather than a generic centered title.
     local logoSize = math.min(State.LogoSize or 30, Layout.TopbarH - 12)
+    local brandX = State.X + 12
+    local logoY = State.Y + (Layout.TopbarH - logoSize) / 2
+
     if State.Logo then
-        DrawPicture(State.Logo,
-                    State.X + 12,
-                    State.Y + (Layout.TopbarH - logoSize) / 2,
-                    logoSize, logoSize, Layer(35), FrameAlpha, 6)
+        DrawPicture(State.Logo, brandX, logoY,
+                    logoSize, logoSize, Layer(35), FrameAlpha, 7)
+    else
+        Rect(brandX, logoY, logoSize, logoSize,
+             th.Accent, 34, 7, 0.10)
+        Stroke(brandX, logoY, logoSize, logoSize,
+               th.Accent, 35, 7, 0.45)
     end
 
-    local titleSize = 15
-    local titleW = TextWidth(title, titleSize, FontBold)
-    local titleX = State.X + (State.W - titleW) / 2
-    local titleY = TextMidY(State.Y, Layout.TopbarH, titleSize)
+    local textX = brandX + logoSize + 10
+    local titleSize = 13
+    local subSize = 8
+    local titleY = State.Y + 8
+    local subY = State.Y + 25
 
-    -- Clean centered identity:  ------  SHADOW UI  ------
-    local gap = 12
-    local railW = math.min(58, math.max(28, (State.W - titleW - 190) / 2))
-    local railY = State.Y + Layout.TopbarH / 2
-    local leftEnd = titleX - gap
-    local leftStart = leftEnd - railW
-    local rightStart = titleX + titleW + gap
+    Text(title, textX, titleY, th.Text,
+         titleSize, FontBold, 35, 0.99,
+         math.max(1, State.W * 0.42))
 
-    GradientRect(leftStart, railY, railW, 1,
-                 th.AccentA, th.Accent, 32, 0.48)
-    GradientRect(rightStart, railY, railW, 1,
-                 th.Accent, th.AccentB, 32, 0.48)
+    local sub = tostring(subtitle or "")
+    if sub ~= "" then
+        Text(string.upper(sub), textX, subY, th.TextDim,
+             subSize, FontSystem, 35, 0.76,
+             math.max(1, State.W * 0.38))
+    end
 
-    Text(title, titleX, titleY, th.Text, titleSize, FontBold,
-         34, 0.98, titleW + 2)
-
+    -- Small live identity capsule. It gives the header a useful secondary
+    -- anchor without competing with the main title.
     local closeSize = TitleButtons.Close.Size
-    local closeX = State.X + State.W - closeSize - 8
+    local closeX = State.X + State.W - closeSize - 9
     local closeY = cy - closeSize / 2
     TitleButtons.Close.X = closeX
     TitleButtons.Close.Y = closeY
 
+    local statusText = string.upper(tostring(State.Theme.Name or "SHADOW"))
+    local statusSize = 8
+    local statusTextW = TextWidth(statusText, statusSize, FontBold)
+    local pillW = math.min(108, math.max(58, statusTextW + 28))
+    local pillH = 22
+    local pillX = closeX - pillW - 10
+    local pillY = cy - pillH / 2
+
+    Rect(pillX, pillY, pillW, pillH,
+         th.Panel, 31, 7, 0.72)
+    Stroke(pillX, pillY, pillW, pillH,
+           th.Stroke, 32, 7, 0.62)
+    Circle(pillX + 11, cy, 2.6,
+           th.Accent, 33, true, 1, 12, 0.95)
+    Text(statusText,
+         pillX + 19,
+         TextMidY(pillY, pillH, statusSize),
+         th.TextDim, statusSize, FontBold,
+         34, 0.88, pillW - 24)
+
     local closeHover = MouseIn(closeX, closeY, closeSize, closeSize)
-    if closeHover then
-        Rect(closeX, closeY, closeSize, closeSize,
-             th.Danger, 30, 6, 0.16)
-        Stroke(closeX, closeY, closeSize, closeSize,
-               th.Danger, 31, 6, 0.5)
-    end
+    Rect(closeX, closeY, closeSize, closeSize,
+         closeHover and th.Danger or th.Panel,
+         30, 7, closeHover and 0.16 or 0.42)
+    Stroke(closeX, closeY, closeSize, closeSize,
+           closeHover and th.Danger or th.Stroke,
+           31, 7, closeHover and 0.55 or 0.52)
 
     local closeColor = closeHover and th.Danger or th.TextDim
     local cxi = closeX + closeSize / 2
     local cyi = closeY + closeSize / 2
-    local s = 5
-    Bar(cxi - s, cyi - s, cxi + s, cyi + s, 1.6, closeColor, 32, closeHover and 1 or 0.8)
-    Bar(cxi + s, cyi - s, cxi - s, cyi + s, 1.6, closeColor, 32, closeHover and 1 or 0.8)
+    local cross = 4.5
+    Bar(cxi - cross, cyi - cross, cxi + cross, cyi + cross,
+        1.55, closeColor, 32, closeHover and 1 or 0.78)
+    Bar(cxi + cross, cyi - cross, cxi - cross, cyi + cross,
+        1.55, closeColor, 32, closeHover and 1 or 0.78)
+
+    -- Quiet baseline separates the command header from workspace content.
+    GradientRect(State.X + 12, State.Y + Layout.TopbarH - 1,
+                 math.max(1, State.W - 24), 1,
+                 th.AccentA, th.AccentB, 29, 0.16)
 
     if closeHover and Input.Click then
         State.Open = false
@@ -2467,11 +2522,11 @@ local function DrawTitleBar(title, subtitle)
         return
     end
 
-
     local barHover = MouseIn(State.X, State.Y, State.W, Layout.TopbarH)
     if barHover and Input.Click and not State.Drag then
-        local exclude =
-            PointInRect(Input.X, Input.Y, closeX, closeY, closeSize, closeSize)
+        local exclude = PointInRect(Input.X, Input.Y,
+                                    closeX, closeY,
+                                    closeSize, closeSize)
         if not exclude then
             BeginDrag()
             Input.Click = false
@@ -5272,17 +5327,31 @@ function HUDBox.new(opts)
     if visible == nil then visible = opts.setVisible end
     if visible == nil then visible = true end
 
+    local dynamic = opts.Dynamic
+    if dynamic == nil then dynamic = opts.dynamic end
+    dynamic = dynamic and true or false
+
+    local explicitW = tonumber(opts.Width or opts.width or opts.W or opts.w)
+    local explicitH = tonumber(opts.Height or opts.height or opts.H or opts.h)
+
     local self = setmetatable({
-        Title    = tostring(opts.Title or opts.title or "Overlay"),
-        X        = tonumber(opts.X or opts.x) or 40,
-        Y        = tonumber(opts.Y or opts.y) or 40,
-        W        = math.max(100, tonumber(opts.Width or opts.width or opts.W or opts.w) or 200),
-        H        = tonumber(opts.Height or opts.height or opts.H or opts.h),
-        Lines    = {},
-        Visible  = visible and true or false,
-        Pin      = false,
-        _drag    = nil,
-        _hover   = 0,
+        Title       = tostring(opts.Title or opts.title or "Overlay"),
+        X           = tonumber(opts.X or opts.x) or 40,
+        Y           = tonumber(opts.Y or opts.y) or 40,
+        W           = math.max(100, explicitW or 200),
+        H           = explicitH,
+        Lines       = {},
+        Visible     = visible and true or false,
+        Dynamic     = dynamic,
+        MaxLines    = Clamp(math.floor(tonumber(opts.MaxLines or opts.maxLines) or 100), 1, 100),
+        MaxChars    = Clamp(math.floor(tonumber(opts.MaxWidth or opts.maxWidth or opts.MaxChars or opts.maxChars) or 50), 8, 50),
+        Font        = ResolveOverlayFont(opts.Font or opts.font, FontBold),
+        HeaderFont  = ResolveOverlayFont(opts.HeaderFont or opts.headerFont, FontBold),
+        FontSize    = Clamp(tonumber(opts.FontSize or opts.fontSize) or 10, 7, 18),
+        HeaderSize  = Clamp(tonumber(opts.HeaderSize or opts.headerSize) or 12, 8, 20),
+        Pin         = false,
+        _drag       = nil,
+        _hover      = 0,
     }, HUDBox)
 
     if self.H then self.H = math.max(48, self.H) end
@@ -5316,20 +5385,36 @@ function HUDBox:SetSize(width, height)
     return self
 end
 
+function HUDBox:SetDynamic(value)
+    self.Dynamic = value and true or false
+    return self
+end
+
+function HUDBox:SetFont(font)
+    self.Font = ResolveOverlayFont(font, self.Font)
+    return self
+end
+
+function HUDBox:SetHeaderFont(font)
+    self.HeaderFont = ResolveOverlayFont(font, self.HeaderFont)
+    return self
+end
+
 function HUDBox:SetPosition(x, y)
     if x ~= nil then self.X = tonumber(x) or self.X end
     if y ~= nil then self.Y = tonumber(y) or self.Y end
     return self
 end
 
-function HUDBox:Line(text, color)
-    -- Existing whole-line colouring remains supported:
-    --   overlay:Line("ONLINE", Color3.fromRGB(...))
+function HUDBox:Line(text, color, font)
+    -- Whole-line style:
+    --   overlay:Line("ONLINE", green, "SystemBold")
+    --   overlay:Line({Text="ONLINE", Color=green, Font="Pixel"})
     --
-    -- Rich per-segment colouring:
+    -- Rich per-segment style:
     --   overlay:Line({
-    --       {"STATUS  ", white},
-    --       {"ONLINE", green},
+    --       {Text="STATUS  ", Color=white, Font="UI"},
+    --       {Text="ONLINE", Color=green, Font="SystemBold"},
     --   })
     if type(text) == "table" and not text.Text and not text.text then
         local segments = {}
@@ -5338,34 +5423,49 @@ function HUDBox:Line(text, color)
                 segments[#segments + 1] = {
                     Text = tostring(part.Text or part.text or part[1] or ""),
                     Color = part.Color or part.color or part[2],
+                    Font = ResolveOverlayFont(part.Font or part.font or part[3], nil),
+                    Size = tonumber(part.Size or part.size or part[4]),
                 }
             else
-                segments[#segments + 1] = { Text = tostring(part), Color = color }
+                segments[#segments + 1] = {
+                    Text = tostring(part),
+                    Color = color,
+                    Font = ResolveOverlayFont(font, nil),
+                }
             end
         end
-        self.Lines[#self.Lines + 1] = { Segments = segments, Color = color }
+        self.Lines[#self.Lines + 1] = {
+            Segments = segments,
+            Color = color,
+            Font = ResolveOverlayFont(font, self.Font),
+        }
     else
+        local tableFont = type(text) == "table" and (text.Font or text.font or text[3]) or nil
+        local tableSize = type(text) == "table" and (text.Size or text.size or text[4]) or nil
         self.Lines[#self.Lines + 1] = {
             Text = tostring((type(text) == "table" and (text.Text or text.text or text[1])) or text or ""),
             Color = (type(text) == "table" and (text.Color or text.color or text[2])) or color,
+            Font = ResolveOverlayFont(tableFont or font, self.Font),
+            Size = tonumber(tableSize),
         }
     end
     return self
 end
 
-function HUDBox:AddLine(text, color)
-    return self:Line(text, color)
+function HUDBox:AddLine(text, color, font)
+    return self:Line(text, color, font)
 end
 
 function HUDBox:SetLines(lines)
     self.Lines = {}
     for _, line in ipairs(lines or {}) do
         if type(line) == "table" and (line.Segments or line.segments) then
-            self:Line(line.Segments or line.segments, line.Color or line.color)
+            self:Line(line.Segments or line.segments,
+                      line.Color or line.color,
+                      line.Font or line.font)
         elseif type(line) == "table" and (line.Text or line.text) then
-            self:Line(line.Text or line.text, line.Color or line.color)
+            self:Line(line)
         elseif type(line) == "table" then
-            -- Array-style tables are treated as rich coloured segments.
             self:Line(line)
         else
             self:Line(line)
@@ -5381,25 +5481,63 @@ end
 
 local function DrawHUDBoxes()
     local th = State.Theme
-
-    -- Custom overlays are independent HUD surfaces. Do not inherit the main
-    -- window's close/open alpha, otherwise they become transparent when the
-    -- main window is hidden.
     local previousAlpha = FrameAlpha
     FrameAlpha = 1
 
     for _, box in ipairs(HUDBoxes) do
         if box.Visible then
-            -- Keep custom overlays visually identical to HOTKEYS/PERFORMANCE.
-            local lineH = 25
             local headerH = 34
             local padX = 12
             local contentPadY = 4
-            local naturalH = headerH + math.max(1, #box.Lines) * lineH + 8
-            local totalH = box.H and math.max(headerH + 8, box.H) or naturalH
+            local visibleCount = math.min(#box.Lines, box.MaxLines or 100)
+
+            -- Measure rich text exactly using the font of every segment.
+            local widestLine = 0
+            local tallestLine = box.FontSize or 10
+            for i = 1, visibleCount do
+                local line = box.Lines[i]
+                local lineW = 0
+                local lineTall = box.FontSize or 10
+                if line.Segments then
+                    for _, segment in ipairs(line.Segments) do
+                        local font = segment.Font or line.Font or box.Font or FontBold
+                        local size = segment.Size or box.FontSize or 10
+                        lineW = lineW + TextWidth(tostring(segment.Text or ""), size, font)
+                        lineTall = math.max(lineTall, size)
+                    end
+                else
+                    local font = line.Font or box.Font or FontBold
+                    local size = line.Size or box.FontSize or 10
+                    lineW = TextWidth(tostring(line.Text or ""), size, font)
+                    lineTall = math.max(lineTall, size)
+                end
+                widestLine = math.max(widestLine, lineW)
+                tallestLine = math.max(tallestLine, lineTall)
+            end
+
+            local headerFont = box.HeaderFont or FontBold
+            local headerSize = box.HeaderSize or 12
+            local header = string.upper(tostring(box.Title or "OVERLAY"))
+            local headerW = TextWidth(header, headerSize, headerFont)
+
+            -- Max width is expressed as a character ceiling (default/max 50),
+            -- converted through the overlay's active font to a real pixel cap.
+            local maxChars = Clamp(box.MaxChars or 50, 8, 50)
+            local charCapW = TextWidth(string.rep("M", maxChars),
+                                       box.FontSize or 10,
+                                       box.Font or FontBold) + padX * 2
+            local naturalW = math.max(headerW + 28, widestLine + padX * 2)
+            local dynamicW = Clamp(naturalW, 100, math.max(100, charCapW))
+            local boxW = box.Dynamic and dynamicW or box.W
+            box.W = boxW
+
+            local lineH = math.max(25, tallestLine + 12)
+            local naturalH = headerH + math.max(1, visibleCount) * lineH + 8
+            local totalH = box.Dynamic and naturalH
+                or (box.H and math.max(headerH + 8, box.H) or naturalH)
 
             local vp = Camera.ViewportSize
-            box.X = math.max(6, math.min(box.X, math.max(6, vp.X - box.W - 6)))
+            box.X = math.max(6, math.min(box.X, math.max(6, vp.X - boxW - 6)))
             box.Y = math.max(6, math.min(box.Y, math.max(6, vp.Y - totalH - 6)))
 
             if box._drag then
@@ -5411,7 +5549,7 @@ local function DrawHUDBoxes()
                 end
             end
 
-            local hover = MouseIn(box.X, box.Y, box.W, totalH)
+            local hover = MouseIn(box.X, box.Y, boxW, totalH)
             box._hover = Approach(box._hover, hover and 1 or 0, 16, State.Delta)
 
             if hover and Input.Click and State.Open and State.Visible >= 0.50 then
@@ -5419,49 +5557,49 @@ local function DrawHUDBoxes()
                 Input.Click = false
             end
 
-            -- Exact same dark-glass body and accent border as the built-ins.
-            Rect(box.X, box.Y, box.W, totalH, rgb(13, 16, 23), 351, 9, 0.96)
-            Stroke(box.X, box.Y, box.W, totalH, th.Accent, 352, 9, 0.88)
+            Rect(box.X, box.Y, boxW, totalH, rgb(13, 16, 23), 351, 9, 0.96)
+            Stroke(box.X, box.Y, boxW, totalH, th.Accent, 352, 9, 0.88)
 
-            -- Same centered, slightly raised header typography.
-            local header = string.upper(tostring(box.Title or "OVERLAY"))
-            local headerSize = 12
-            local headerW = TextWidth(header, headerSize, FontBold)
+            local measuredHeaderW = TextWidth(header, headerSize, headerFont)
             Text(header,
-                 box.X + (box.W - headerW) / 2,
+                 box.X + (boxW - measuredHeaderW) / 2,
                  TextMidY(box.Y, headerH, headerSize) - 2,
-                 th.Text, headerSize, FontBold, 354, 1, headerW + 2)
+                 th.Text, headerSize, headerFont, 354, 1,
+                 math.max(1, boxW - 20))
 
-            -- Same header/content separator.
             Line(box.X + 10, box.Y + headerH - 1,
-                 box.X + box.W - 10, box.Y + headerH - 1,
+                 box.X + boxW - 10, box.Y + headerH - 1,
                  th.Accent, 354, 1, 0.22)
 
-            -- Content supports either a whole-line colour or multiple
-            -- independently coloured text segments on the same row.
-            for i, line in ipairs(box.Lines) do
+            for i = 1, visibleCount do
+                local line = box.Lines[i]
                 local rowY = box.Y + headerH + contentPadY + (i - 1) * lineH
-                if rowY + 12 <= box.Y + totalH - 5 then
+                if rowY + 8 <= box.Y + totalH - 5 then
                     local tx = box.X + padX
-                    local maxRight = box.X + box.W - padX
-                    local ty = TextMidY(rowY, lineH, 10)
+                    local maxRight = box.X + boxW - padX
 
                     if line.Segments then
                         for _, segment in ipairs(line.Segments) do
                             if tx >= maxRight then break end
+                            local font = segment.Font or line.Font or box.Font or FontBold
+                            local size = segment.Size or box.FontSize or 10
                             local room = maxRight - tx
-                            local segmentText = TrimText(tostring(segment.Text or ""), room, 10, FontBold)
+                            local segmentText = TrimText(tostring(segment.Text or ""), room, size, font)
                             if segmentText ~= "" then
-                                Text(segmentText, tx, ty,
+                                Text(segmentText, tx,
+                                     TextMidY(rowY, lineH, size),
                                      segment.Color or line.Color or th.Text,
-                                     10, FontBold, 355, 0.96, room)
-                                tx = tx + TextWidth(segmentText, 10, FontBold)
+                                     size, font, 355, 0.96, room)
+                                tx = tx + TextWidth(segmentText, size, font)
                             end
                         end
                     else
-                        Text(line.Text or "", tx, ty,
+                        local font = line.Font or box.Font or FontBold
+                        local size = line.Size or box.FontSize or 10
+                        Text(line.Text or "", tx,
+                             TextMidY(rowY, lineH, size),
                              line.Color or th.Text,
-                             10, FontBold, 355, 0.96,
+                             size, font, 355, 0.96,
                              maxRight - tx)
                     end
                 end
@@ -6172,7 +6310,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.8-EFFECTS-COLORED-HUD-ICONS"
+Library.Version       = "v46.9-DYNAMIC-HUD-FONTS-HEADER"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6371,7 +6509,7 @@ end)
 
 
 
-Library.Version = "v46.8-EFFECTS-COLORED-HUD-ICONS"
+Library.Version = "v46.9-DYNAMIC-HUD-FONTS-HEADER"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
