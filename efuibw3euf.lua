@@ -1309,6 +1309,15 @@ local function SetGameInputBlocked(blocked)
         local gameObj = game
         if not gameObj or not gameObj.GetService then return end
         local CAS = gameObj:GetService("ContextActionService")
+        local UIS = gameObj:GetService("UserInputService")
+
+        -- Release locked-center mouse/camera look while interacting with the UI.
+        if UIS and Enum and Enum.MouseBehavior then
+            if blocked then
+                pcall(function() UIS.MouseBehavior = Enum.MouseBehavior.Default end)
+            end
+        end
+
         if not CAS then return end
 
         if blocked then
@@ -1524,6 +1533,77 @@ end
 --  SCROLL  --  smooth scroll per tab + scrollbar rendering
 -- ============================================================================
 
+local ContentScrollbarDrag = {
+    Active = false,
+    OffsetY = 0,
+    Tab = nil,
+}
+
+local function GetContentScrollbarGeometry(tab)
+    if not tab or (tab.MaxScroll or 0) <= 0 then return nil end
+    local trackW = math.max(6, Layout.ScrollbarW)
+    local trackX = Geometry.ContentX + Geometry.ContentW - trackW - 3
+    local trackY = Geometry.ContentY + 4
+    local trackH = math.max(20, Geometry.ContentH - 8)
+    local viewFrac = Geometry.InnerH / math.max(1, Geometry.InnerH + tab.MaxScroll)
+    local thumbH = math.max(24, trackH * viewFrac)
+    local travel = math.max(1, trackH - thumbH)
+    local scrollFrac = (tab.ScrollTo or 0) / math.max(1, tab.MaxScroll)
+    local thumbY = trackY + travel * scrollFrac
+    return trackX, trackY, trackW, trackH, thumbY, thumbH, travel
+end
+
+local function UpdateContentScrollbarInput(tab)
+    if not tab then
+        ContentScrollbarDrag.Active = false
+        ContentScrollbarDrag.Tab = nil
+        return
+    end
+
+    local trackX, trackY, trackW, trackH, thumbY, thumbH, travel =
+        GetContentScrollbarGeometry(tab)
+    if not trackX then
+        ContentScrollbarDrag.Active = false
+        ContentScrollbarDrag.Tab = nil
+        return
+    end
+
+    if ContentScrollbarDrag.Active and ContentScrollbarDrag.Tab == tab then
+        if Input.Down then
+            local newThumbY = Clamp(Input.Y - ContentScrollbarDrag.OffsetY,
+                                    trackY, trackY + travel)
+            local frac = (newThumbY - trackY) / math.max(1, travel)
+            tab.ScrollTo = Clamp(frac * tab.MaxScroll, 0, tab.MaxScroll)
+            tab.Scroll = tab.ScrollTo
+            Input.Click = false
+        else
+            ContentScrollbarDrag.Active = false
+            ContentScrollbarDrag.Tab = nil
+        end
+        return
+    end
+
+    if Input.Click and MouseIn(trackX - 3, thumbY - 2, trackW + 6, thumbH + 4) then
+        ContentScrollbarDrag.Active = true
+        ContentScrollbarDrag.Tab = tab
+        ContentScrollbarDrag.OffsetY = Input.Y - thumbY
+        Input.Click = false
+        return
+    end
+
+    -- Clicking the empty track jumps the thumb there and begins dragging.
+    if Input.Click and MouseIn(trackX - 3, trackY, trackW + 6, trackH) then
+        local centered = Clamp(Input.Y - thumbH / 2, trackY, trackY + travel)
+        local frac = (centered - trackY) / math.max(1, travel)
+        tab.ScrollTo = Clamp(frac * tab.MaxScroll, 0, tab.MaxScroll)
+        tab.Scroll = tab.ScrollTo
+        ContentScrollbarDrag.Active = true
+        ContentScrollbarDrag.Tab = tab
+        ContentScrollbarDrag.OffsetY = thumbH / 2
+        Input.Click = false
+    end
+end
+
 local function TickScroll(tab, dt)
     tab.ScrollTo = Clamp(tab.ScrollTo, 0, tab.MaxScroll or 0)
 
@@ -1561,21 +1641,16 @@ local function HandleWheel(tab)
 end
 
 local function DrawScrollbar(tab)
-    if (tab.MaxScroll or 0) <= 0 then return end
-    local trackX = Geometry.ContentX + Geometry.ContentW - Layout.ScrollbarW - 3
-    local trackY = Geometry.ContentY + 4
-    local trackH = Geometry.ContentH - 8
+    local trackX, trackY, trackW, trackH, thumbY, thumbH =
+        GetContentScrollbarGeometry(tab)
+    if not trackX then return end
 
-    Rect(trackX, trackY, Layout.ScrollbarW, trackH,
-         State.Theme.Track, 20, Layout.ScrollbarW / 2, 0.35)
+    Rect(trackX, trackY, trackW, trackH,
+         State.Theme.Track, 20, trackW / 2, 0.38)
 
-    local viewFrac = Geometry.InnerH / (Geometry.InnerH + tab.MaxScroll)
-    local thumbH = math.max(24, trackH * viewFrac)
-    local scrollFrac = tab.ScrollTo / math.max(1, tab.MaxScroll)
-    local thumbY = trackY + (trackH - thumbH) * scrollFrac
-
-    Rect(trackX, thumbY, Layout.ScrollbarW, thumbH,
-         State.Theme.Accent, 21, Layout.ScrollbarW / 2, 0.7)
+    local active = ContentScrollbarDrag.Active and ContentScrollbarDrag.Tab == tab
+    Rect(trackX, thumbY, trackW, thumbH,
+         State.Theme.Accent, 21, trackW / 2, active and 1 or 0.82)
 end
 
 -- ============================================================================
@@ -2955,6 +3030,15 @@ local function MeasureSection(section, w)
     return headerH + visiblePanelH
 end
 
+local ActiveClipTop = nil
+local ActiveClipBottom = nil
+
+local function VerticalVisible(y, h)
+    if ActiveClipTop == nil or ActiveClipBottom == nil then return true end
+    h = math.max(0, h or 0)
+    return (y + h >= ActiveClipTop) and (y <= ActiveClipBottom)
+end
+
 local function DrawSection(section, x, y, w)
     TickSection(section)
 
@@ -2991,21 +3075,29 @@ local function DrawSection(section, x, y, w)
     section._layoutW = w
     section._layoutH = headerH + visiblePanelH
 
-    local arrow = collapse > 0.5 and ">" or "v"
-    Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
+    local headerVisible = VerticalVisible(y, headerH)
+    local panelVisible = VerticalVisible(panelY, visiblePanelH)
+    if not headerVisible and not panelVisible then return end
 
-    Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, FontBold,
-         50, 0.98, math.max(1, w - 14))
+    if headerVisible then
+        local arrow = collapse > 0.5 and ">" or "v"
+        Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
 
-    if section.Description and section.Description ~= "" then
-        Text(section.Description, x + 14, y + Layout.SectionTitleH,
-             State.Theme.TextDim, Layout.SmallSize, FontSystem, 50, 0.72, math.max(1, w - 14))
+        Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, FontBold,
+             50, 0.98, math.max(1, w - 14))
+
+        if section.Description and section.Description ~= "" then
+            Text(section.Description, x + 14, y + Layout.SectionTitleH,
+                 State.Theme.TextDim, Layout.SmallSize, FontSystem, 50, 0.72, math.max(1, w - 14))
+        end
     end
 
     if collapse >= 0.985 then return end
 
-    FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
-    Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+    if panelVisible then
+        FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
+        Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+    end
 
     local innerX = x + Layout.SectionPadX
     local innerY = panelY + Layout.SectionPadY
@@ -3015,11 +3107,21 @@ local function DrawSection(section, x, y, w)
 
     for _, child in ipairs(section.Rows or {}) do
         if not child.Hidden and cy < contentBottom then
-            local h
+            local estimatedH = child.Height or Layout.RowHeight
             if getmetatable(child) == InlineRow then
-                h = LayoutInline(child, innerX, cy, innerW)
-            else
-                h = DrawRow(child, innerX, cy, innerW)
+                estimatedH = Layout.RowHeight
+                for _, ctrl in ipairs(child.Cells or {}) do
+                    if not ctrl.Hidden then estimatedH = math.max(estimatedH, ctrl.Height or Layout.RowHeight) end
+                end
+            end
+
+            local h = estimatedH
+            if VerticalVisible(cy, estimatedH) then
+                if getmetatable(child) == InlineRow then
+                    h = LayoutInline(child, innerX, cy, innerW)
+                else
+                    h = DrawRow(child, innerX, cy, innerW)
+                end
             end
             cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
         end
@@ -3048,12 +3150,19 @@ local function InputSection(section)
 
     for _, child in ipairs(section.Rows or {}) do
         if not child.Hidden then
-            local h
+            local h = child.Height or Layout.RowHeight
             if getmetatable(child) == InlineRow then
-                InputInline(child, innerX, cy, innerW)
                 h = Layout.RowHeight
+                for _, ctrl in ipairs(child.Cells or {}) do
+                    if not ctrl.Hidden then h = math.max(h, ctrl.Height or Layout.RowHeight) end
+                end
+                if cy + h >= Geometry.ContentY and cy <= Geometry.ContentY + Geometry.ContentH then
+                    InputInline(child, innerX, cy, innerW)
+                end
             else
-                h = InputRow(child, innerX, cy, innerW)
+                if cy + h >= Geometry.ContentY and cy <= Geometry.ContentY + Geometry.ContentH then
+                    h = InputRow(child, innerX, cy, innerW)
+                end
             end
             cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
         end
@@ -3303,6 +3412,8 @@ Register("Dropdown", function(parent, opts)
     self._openAnim = 0
     self._listScroll = 0
     self._listScrollTo = 0
+    self._scrollDrag = false
+    self._scrollDragOffsetY = 0
 
     function self:GetValue() return self.Value end
 
@@ -3428,12 +3539,15 @@ Register("Dropdown", function(parent, opts)
 
         -- scrollbar hint (if more options than fit)
         if maxScroll > 0 then
-            local sx = x + w - 4
+            local barW = 5
+            local sx = x + w - barW - 3
+            local trackY = y + 4
             local trackH = listH - 8
-            Rect(sx, y + 4, 2, trackH, th.Track, 65, 1, 0.6)
-            local thumbH = math.max(10, trackH * (maxVisible / #self.Options))
-            local thumbY = y + 4 + (trackH - thumbH) * (self._listScroll / maxScroll)
-            Rect(sx, thumbY, 2, thumbH, th.Accent, 66, 1, 0.9)
+            Rect(sx, trackY, barW, trackH, th.Track, 65, barW / 2, 0.62)
+            local thumbH = math.max(14, trackH * (maxVisible / #self.Options))
+            local thumbY = trackY + (trackH - thumbH) * (self._listScroll / maxScroll)
+            Rect(sx, thumbY, barW, thumbH, th.Accent, 66, barW / 2,
+                 self._scrollDrag and 1 or 0.9)
         end
     end
 
@@ -3452,16 +3566,43 @@ Register("Dropdown", function(parent, opts)
             local listH = math.min(#self.Options, maxVisible) * rowH + 8
             local listY = fieldY + h + 3
 
-            -- hit test inside list
-            if MouseIn(fieldX, listY, fieldW, listH) and Input.Click then
-                Input.Click = false
-                return   -- handled in Draw
-            end
+            -- draggable list scrollbar; no wheel support required.
+            local maxScroll = math.max(0, #self.Options - maxVisible)
+            if maxScroll > 0 then
+                local barW = 5
+                local sx = fieldX + fieldW - barW - 3
+                local trackY = listY + 4
+                local trackH = listH - 8
+                local thumbH = math.max(14, trackH * (maxVisible / #self.Options))
+                local travel = math.max(1, trackH - thumbH)
+                local thumbY = trackY + travel * (self._listScrollTo / maxScroll)
 
-            -- scroll
-            if MouseIn(fieldX, listY, fieldW, listH) and Input.Wheel ~= 0 then
-                local maxScroll = math.max(0, #self.Options - maxVisible)
-                self._listScrollTo = Clamp(self._listScrollTo - Input.Wheel, 0, maxScroll)
+                if self._scrollDrag then
+                    if Input.Down then
+                        local newY = Clamp(Input.Y - self._scrollDragOffsetY,
+                                           trackY, trackY + travel)
+                        self._listScrollTo = ((newY - trackY) / travel) * maxScroll
+                        self._listScroll = self._listScrollTo
+                        Input.Click = false
+                    else
+                        self._scrollDrag = false
+                    end
+                elseif Input.Click and MouseIn(sx - 4, thumbY - 2, barW + 8, thumbH + 4) then
+                    self._scrollDrag = true
+                    self._scrollDragOffsetY = Input.Y - thumbY
+                    Input.Click = false
+                    return
+                elseif Input.Click and MouseIn(sx - 4, trackY, barW + 8, trackH) then
+                    local newY = Clamp(Input.Y - thumbH / 2, trackY, trackY + travel)
+                    self._listScrollTo = ((newY - trackY) / travel) * maxScroll
+                    self._listScroll = self._listScrollTo
+                    self._scrollDrag = true
+                    self._scrollDragOffsetY = thumbH / 2
+                    Input.Click = false
+                    return
+                end
+            else
+                self._scrollDrag = false
             end
 
             -- click outside closes
@@ -4155,6 +4296,8 @@ local function DrawContent()
 
     local clipTop = viewportTop
     local clipBottom = Geometry.ContentY + Geometry.ContentH
+    ActiveClipTop = clipTop
+    ActiveClipBottom = clipBottom
     for _, item in ipairs(items) do
         local row = item.row
         local y = item.y - tab.Scroll
@@ -4171,6 +4314,8 @@ local function DrawContent()
     end
 
     DrawScrollbar(tab)
+    ActiveClipTop = nil
+    ActiveClipBottom = nil
 end
 
 -- ============================================================================
@@ -4180,6 +4325,9 @@ end
 local function InputContent()
     local tab = State.Tabs[State.ActiveIndex]
     if not tab then return end
+
+    UpdateContentScrollbarInput(tab)
+    if ContentScrollbarDrag.Active then return end
 
     if not MouseIn(Geometry.ContentX, Geometry.ContentY,
                    Geometry.ContentW, Geometry.ContentH) then
@@ -4716,6 +4864,14 @@ local function Render()
     TickTheme(State.Delta)
     TickStartup(State.Delta)
     SetGameInputBlocked(State.Open and not State.Startup.Active and State.Visible > 0.05)
+    if State.Open and not State.Startup.Active then
+        pcall(function()
+            local UIS = game:GetService("UserInputService")
+            if UIS and Enum and Enum.MouseBehavior then
+                UIS.MouseBehavior = Enum.MouseBehavior.Default
+            end
+        end)
+    end
 
     local startupIsLoading = State.Startup.Active and State.Startup.Phase == "loading"
     local startupIsShrink = State.Startup.Active and State.Startup.Phase == "shrink"
@@ -5159,7 +5315,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v37-INPUT-OVERLAY-SCROLL"
+Library.Version       = "v38-DRAG-SCROLL-CLIP"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5345,7 +5501,7 @@ end)
 
 
 
-Library.Version = "v37-INPUT-OVERLAY-SCROLL"
+Library.Version = "v38-DRAG-SCROLL-CLIP"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
