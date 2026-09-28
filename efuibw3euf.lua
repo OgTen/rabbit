@@ -2596,7 +2596,7 @@ Register("Button", function(parent, opts)
         local label = self.ButtonText
         local lw = TextWidth(label, Layout.TextSize, FontBold)
         local lc = mix(th.Text, th.Accent, glow * 0.7)
-        Text(label, btnX + (btnW - lw) / 2, btnY + (h - Layout.TextSize) / 2,
+        Text(label, btnX + (btnW - lw) / 2, TextMidY(btnY, h, Layout.TextSize),
              lc, Layout.TextSize, FontBold, 54, self.Enabled and 1 or 0.5)
 
         -- title on the left
@@ -4660,29 +4660,88 @@ local HUDBoxes = {}
 
 function HUDBox.new(opts)
     opts = opts or {}
+
+    local visible = opts.Visible
+    if visible == nil then visible = opts.visible end
+    if visible == nil then visible = opts.SetVisible end
+    if visible == nil then visible = opts.setVisible end
+    if visible == nil then visible = true end
+
     local self = setmetatable({
-        Title    = opts.Title or "Box",
-        X        = opts.X or 40,
-        Y        = opts.Y or 40,
-        W        = opts.W or 200,
+        Title    = tostring(opts.Title or opts.title or "Overlay"),
+        X        = tonumber(opts.X or opts.x) or 40,
+        Y        = tonumber(opts.Y or opts.y) or 40,
+        W        = math.max(100, tonumber(opts.Width or opts.width or opts.W or opts.w) or 200),
+        H        = tonumber(opts.Height or opts.height or opts.H or opts.h),
         Lines    = {},
-        Visible  = true,
+        Visible  = visible and true or false,
         Pin      = false,
         _drag    = nil,
         _hover   = 0,
     }, HUDBox)
+
+    if self.H then self.H = math.max(48, self.H) end
+
     HUDBoxes[#HUDBoxes + 1] = self
     return self
 end
 
-function HUDBox:SetVisible(v) self.Visible = v and true or false end
-
-function HUDBox:Line(text, color)
-    self.Lines[#self.Lines + 1] = { Text = text, Color = color }
+function HUDBox:SetVisible(v)
+    self.Visible = v and true or false
+    if not self.Visible then self._drag = nil end
     return self
 end
 
-function HUDBox:Clear() self.Lines = {} return self end
+function HUDBox:GetVisible()
+    return self.Visible
+end
+
+function HUDBox:Toggle()
+    return self:SetVisible(not self.Visible)
+end
+
+function HUDBox:SetTitle(title)
+    self.Title = tostring(title or "")
+    return self
+end
+
+function HUDBox:SetSize(width, height)
+    if width ~= nil then self.W = math.max(100, tonumber(width) or self.W) end
+    if height ~= nil then self.H = math.max(48, tonumber(height) or (self.H or 48)) end
+    return self
+end
+
+function HUDBox:SetPosition(x, y)
+    if x ~= nil then self.X = tonumber(x) or self.X end
+    if y ~= nil then self.Y = tonumber(y) or self.Y end
+    return self
+end
+
+function HUDBox:Line(text, color)
+    self.Lines[#self.Lines + 1] = { Text = tostring(text or ""), Color = color }
+    return self
+end
+
+function HUDBox:AddLine(text, color)
+    return self:Line(text, color)
+end
+
+function HUDBox:SetLines(lines)
+    self.Lines = {}
+    for _, line in ipairs(lines or {}) do
+        if type(line) == "table" then
+            self:Line(line.Text or line.text or line[1] or "", line.Color or line.color or line[2])
+        else
+            self:Line(line)
+        end
+    end
+    return self
+end
+
+function HUDBox:Clear()
+    self.Lines = {}
+    return self
+end
 
 local function DrawHUDBoxes()
     local th = State.Theme
@@ -4694,7 +4753,12 @@ local function DrawHUDBoxes()
             local padX = 10
             local padY = 8
             local contentH = math.max(1, #box.Lines) * lineH
-            local totalH = headerH + contentH + padY
+            local naturalH = headerH + contentH + padY
+            local totalH = box.H and math.max(headerH + 8, box.H) or naturalH
+
+            local vp = Camera.ViewportSize
+            box.X = math.max(6, math.min(box.X, math.max(6, vp.X - box.W - 6)))
+            box.Y = math.max(6, math.min(box.Y, math.max(6, vp.Y - totalH - 6)))
 
             -- drag
             if box._drag then
@@ -4728,9 +4792,12 @@ local function DrawHUDBoxes()
             GradientRect(box.X + 1, box.Y + 1, box.W - 2, 1.5,
                          th.AccentA, th.AccentB, 224, 0.6)
 
-            Text(box.Title, box.X + padX, box.Y + 4,
-                 th.Text, 12, FontBold, 225, 0.95,
-                 box.W - padX * 2)
+            local titleSize = 12
+            local titleW = TextWidth(box.Title, titleSize, FontBold)
+            local titleX = box.X + math.max(padX, (box.W - titleW) / 2)
+            Text(box.Title, titleX, TextMidY(box.Y, headerH, titleSize) - 1,
+                 th.Text, titleSize, FontBold, 225, 0.95,
+                 math.max(1, box.W - padX * 2))
 
             -- divider
             Line(box.X + 6, box.Y + headerH,
@@ -4740,9 +4807,11 @@ local function DrawHUDBoxes()
             -- lines
             for i, line in ipairs(box.Lines) do
                 local ly = box.Y + headerH + padY + (i - 1) * lineH
-                Text(line.Text, box.X + padX, ly,
-                     line.Color or th.TextDim, 11, FontSystem, 226, 0.9,
-                     box.W - padX * 2)
+                if ly + 12 <= box.Y + totalH - 5 then
+                    Text(line.Text, box.X + padX, ly,
+                         line.Color or th.TextDim, 11, FontSystem, 226, 0.9,
+                         box.W - padX * 2)
+                end
             end
         end
     end
@@ -5422,7 +5491,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v41-OVERLAY-POLISH-UNCAPPED"
+Library.Version       = "v42-CREATE-OVERLAY"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5527,6 +5596,11 @@ function Library:Destroy()
 end
 
 -- HUD boxes ----------------------------------------------------------------
+function Library:CreateOverlay(opts)
+    return HUDBox.new(opts)
+end
+
+-- Backwards-compatible name kept for scripts already using CreateBox.
 function Library:CreateBox(opts)
     return HUDBox.new(opts)
 end
@@ -5616,7 +5690,7 @@ end)
 
 
 
-Library.Version = "v41-OVERLAY-POLISH-UNCAPPED"
+Library.Version = "v42-CREATE-OVERLAY"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
