@@ -301,10 +301,9 @@ local FrameAlpha = 1  -- global fade multiplier used during open/close
 -- not share the normal Rect() alpha value, so changing the glass strength
 -- cannot alter buttons, sliders, overlays, text, or other controls.
 local GlassSurfaceAlpha = 0.85
+local InternalSurfaceAlpha = 0.72
 
 local function GlassSurface(x, y, w, h, color, z, corner)
-    local windowOpacityFactor = ((State.Settings and State.Settings.WindowOpacity) or 82) / 100
-    local surfaceOpacityFactor = ((State.Settings and State.Settings.SurfaceOpacity) or 72) / 100
     if w <= 0 or h <= 0 then DrawOrder = DrawOrder + 1; return end
     local o, l = Take("Square")
     local depth = Layer(z)
@@ -4980,14 +4979,20 @@ local function EnsureGlobalSettingsTab(library)
         Description = "Controls how transparent or solid the main glass window is.",
         Min = 35, Max = 100, Default = State.Settings.WindowOpacity, Step = 1,
         Suffix = "%",
-        Callback = function(v) State.Settings.WindowOpacity = v end,
+        Callback = function(v)
+            State.Settings.WindowOpacity = v
+            GlassSurfaceAlpha = math.max(0.20, math.min(1, v / 100))
+        end,
     })
     Controls.Slider(hud, {
         Title = "Surface opacity",
         Description = "Controls the strength of panels, cards and internal surfaces.",
         Min = 30, Max = 100, Default = State.Settings.SurfaceOpacity, Step = 1,
         Suffix = "%",
-        Callback = function(v) State.Settings.SurfaceOpacity = v end,
+        Callback = function(v)
+            State.Settings.SurfaceOpacity = v
+            InternalSurfaceAlpha = math.max(0.20, math.min(1, v / 100))
+        end,
     })
 
     local behavior = Section.new(tab, "Behavior", "Window and navigation preferences", {})
@@ -5026,6 +5031,8 @@ local Library = {}
 -- The startup animation is part of the same window.
 function Library:CreateWindow(opts)
     opts = opts or {}
+    GlassSurfaceAlpha = math.max(0.20, math.min(1, (State.Settings.WindowOpacity or 82) / 100))
+    InternalSurfaceAlpha = math.max(0.20, math.min(1, (State.Settings.SurfaceOpacity or 72) / 100))
 
     local size = opts.Size or opts.size
     if type(size) == "userdata" or type(size) == "table" then
@@ -5065,7 +5072,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v35-THEMED-SETTINGS-SHOWCASE"
+Library.Version       = "v35.1-THEMED-SETTINGS-FIX"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5251,7 +5258,7 @@ end)
 
 
 
-Library.Version = "v35-THEMED-SETTINGS-SHOWCASE"
+Library.Version = "v35.1-THEMED-SETTINGS-FIX"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
