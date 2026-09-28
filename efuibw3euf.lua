@@ -1155,6 +1155,7 @@ local State = {
 
     -- notifications queue
     Notifications = {},
+    KeybindManagerOpen = false,
     ContextMenu = nil,
 }
 
@@ -1314,8 +1315,6 @@ function Section.new(tab, title, description, opts)
         Title       = title or "Section",
         Description = description or "",
         Collapsed   = opts.Collapsed and true or false,
-        _collapse   = opts.Collapsed and 1 or 0,
-        _collapseTarget = opts.Collapsed and 1 or 0,
         Rows        = {},
         HeaderH     = Layout.SectionH,
         _layoutX    = 0,
@@ -1979,7 +1978,7 @@ local function DrawTitleBar(title, subtitle)
         local exclude =
             PointInRect(Input.X, Input.Y, closeX, closeY, closeSize, closeSize) or
             PointInRect(Input.X, Input.Y, menuX, menuY, menuSize, menuSize) or
-            false
+            PointInRect(Input.X, Input.Y, keyX, keyY, keySize, keySize)
         if not exclude then
             BeginDrag()
             Input.Click = false
@@ -2821,7 +2820,6 @@ end
 
 local WantTooltip
 local DrawKeybindManager
-local IsTooltipControl
 
 local ContentCursor = { y = 0 }
 
@@ -2840,7 +2838,22 @@ local function GetSectionHeaderHeight(section)
     return Layout.SectionTitleH + 4
 end
 
-local function GetSectionContentHeight(section, w)
+local function TickSection(section)
+    local target = section.Collapsed and 1 or 0
+    section._collapse = section._collapse or target
+    if State.NoAnim then
+        section._collapse = target
+    else
+        section._collapse = Approach(section._collapse, target, 18, State.Delta)
+        if math.abs(section._collapse - target) < 0.01 then
+            section._collapse = target
+        end
+    end
+end
+
+local function MeasureSection(section, w)
+    TickSection(section)
+
     local panelW = math.max(1, w)
     local innerW = math.max(1, panelW - Layout.SectionPadX * 2)
     local contentH = 0
@@ -2866,46 +2879,50 @@ local function GetSectionContentHeight(section, w)
         contentH = contentH - Layout.RowGapY
     end
 
-    return math.max(Layout.RowHeight, contentH)
-end
-
-local function TickSectionAnimations(dt)
-    for _, tab in ipairs(State.Tabs) do
-        for _, row in ipairs(tab.Rows or {}) do
-            if IsSection(row) then
-                row._collapse = Approach(row._collapse or 0, row._collapseTarget or 0, 16, dt)
-                if math.abs(row._collapse - row._collapseTarget) < 0.01 then
-                    row._collapse = row._collapseTarget
-                end
-            end
-        end
-    end
-end
-
-local function MeasureSection(section, w)
     local headerH = GetSectionHeaderHeight(section)
-    local contentMinH = GetSectionContentHeight(section, w)
+    local contentMinH = math.max(Layout.RowHeight, contentH)
     local fullPanelH = Layout.SectionPadY + contentMinH + Layout.SectionPadY
     local collapse = Clamp(section._collapse or 0, 0, 1)
-    local panelH = fullPanelH * (1 - collapse)
-    return headerH + math.max(4, panelH)
+    local visiblePanelH = fullPanelH * (1 - collapse)
+
+    return headerH + math.max(4, visiblePanelH)
 end
 
 local function DrawSection(section, x, y, w)
+    TickSection(section)
+
     local headerH = GetSectionHeaderHeight(section)
-    local collapse = Clamp(section._collapse or 0, 0, 1)
-    local fullContentH = GetSectionContentHeight(section, w)
-    local fullPanelH = Layout.SectionPadY + fullContentH + Layout.SectionPadY
     local panelY = y + headerH
-    local panelH = fullPanelH * (1 - collapse)
-    local innerX = x + Layout.SectionPadX
-    local innerY = panelY + Layout.SectionPadY
-    local innerW = math.max(1, w - Layout.SectionPadX * 2)
+
+    -- Calculate the full panel height separately from the animated visible height.
+    local fullH = MeasureSection(section, w)
+    local collapse = Clamp(section._collapse or 0, 0, 1)
+    local panelH = math.max(4, fullH - headerH)
+
+    -- Reconstruct the uncollapsed panel height for clipping/reveal calculations.
+    local contentH = 0
+    for _, child in ipairs(section.Rows or {}) do
+        if not child.Hidden then
+            if getmetatable(child) == InlineRow then
+                local h = 0
+                for _, ctrl in ipairs(child.Cells or {}) do
+                    if not ctrl.Hidden then h = math.max(h, ctrl.Height or Layout.RowHeight) end
+                end
+                contentH = contentH + (h > 0 and h or Layout.RowHeight)
+            else
+                contentH = contentH + (child.Height or Layout.RowHeight)
+            end
+            contentH = contentH + Layout.RowGapY
+        end
+    end
+    if contentH > 0 then contentH = contentH - Layout.RowGapY end
+    local fullPanelH = Layout.SectionPadY + math.max(Layout.RowHeight, contentH) + Layout.SectionPadY
+    local visiblePanelH = math.max(4, fullPanelH * (1 - collapse))
 
     section._layoutX = x
     section._layoutY = y
     section._layoutW = w
-    section._layoutH = headerH + math.max(4, panelH)
+    section._layoutH = headerH + visiblePanelH
 
     local arrow = collapse > 0.5 and ">" or "v"
     Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
@@ -2917,20 +2934,19 @@ local function DrawSection(section, x, y, w)
              State.Theme.TextDim, Layout.SmallSize, FontSystem, 50, 0.72, math.max(1, w - 14))
     end
 
-    if collapse >= 0.985 then
-        return
-    end
+    if collapse >= 0.985 then return end
 
-    FrostedSurface(x, panelY, w, math.max(4, panelH), State.Theme.Panel, 40, Layout.SectionCorner)
-    Stroke(x, panelY, w, math.max(4, panelH), State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
+    FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
+    Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
 
-    if collapse >= 0.82 then
-        return
-    end
-
+    local innerX = x + Layout.SectionPadX
+    local innerY = panelY + Layout.SectionPadY
+    local innerW = math.max(1, w - Layout.SectionPadX * 2)
     local cy = innerY
+    local contentBottom = panelY + visiblePanelH - Layout.SectionPadY
+
     for _, child in ipairs(section.Rows or {}) do
-        if not child.Hidden then
+        if not child.Hidden and cy < contentBottom then
             local h
             if getmetatable(child) == InlineRow then
                 h = LayoutInline(child, innerX, cy, innerW)
@@ -2950,7 +2966,6 @@ local function InputSection(section)
 
     if MouseIn(x, y, w, headerH) and Input.Click then
         section.Collapsed = not section.Collapsed
-        section._collapseTarget = section.Collapsed and 1 or 0
         Input.Click = false
         return
     end
@@ -2988,8 +3003,13 @@ function DrawRow(row, x, y, w)
     if getmetatable(row) == InlineRow then
         local h = LayoutInline(row, x, y, w)
         for _, ctrl in ipairs(row.Cells or {}) do
-            if IsTooltipControl(ctrl) and ctrl.Enabled ~= false
-                and ctrl.Tooltip and ctrl.Tooltip ~= ""
+            local kind = ctrl.Kind
+            local tooltipAllowed = kind == "Toggle"
+                or kind == "Button"
+                or kind == "Slider"
+                or kind == "RangeSlider"
+                or kind == "Dropdown"
+            if tooltipAllowed and ctrl.Enabled ~= false and ctrl.Tooltip and ctrl.Tooltip ~= ""
                 and ctrl._inlineX and ctrl._inlineY and ctrl._inlineW
                 and MouseIn(ctrl._inlineX, ctrl._inlineY, ctrl._inlineW, ctrl.Height or Layout.RowHeight) then
                 WantTooltip(ctrl.Tooltip)
@@ -2998,11 +3018,25 @@ function DrawRow(row, x, y, w)
         return h or Layout.RowHeight
     end
 
-    local draw = row.Draw
-    if type(draw) == "function" then
-        draw(row, x, y, w)
-        if IsTooltipControl(row) and row.Enabled ~= false
-            and row.Tooltip and row.Tooltip ~= ""
+    if row.Draw then
+        local ok, err = pcall(function()
+            row:Draw(x, y, w)
+        end)
+        if not ok then
+            if not row._drawErrorShown then
+                row._drawErrorShown = true
+                warn("[Library] control draw error:", tostring(row.Kind), tostring(row.Title), tostring(err))
+            end
+            return row.Height or Layout.RowHeight
+        end
+
+        local kind = row.Kind
+        local tooltipAllowed = kind == "Toggle"
+            or kind == "Button"
+            or kind == "Slider"
+            or kind == "RangeSlider"
+            or kind == "Dropdown"
+        if tooltipAllowed and row.Enabled ~= false and row.Tooltip and row.Tooltip ~= ""
             and MouseIn(x, y, w, row.Height or Layout.RowHeight) then
             WantTooltip(row.Tooltip)
         end
@@ -3224,15 +3258,9 @@ Register("Dropdown", function(parent, opts)
         local h = Layout.DropdownH
 
         local fieldY = y + 2
-        local titleW = self.Title ~= "" and math.min(0.46 * w, TextWidth(self.Title, Layout.TextSize, FontSystem) + 8) or 0
-        local fieldX = self.Title ~= "" and (x + titleW + 10) or x
-        local fieldW = self.Title ~= "" and math.max(70, w - titleW - 10) or w
-
-        if self.Title ~= "" then
-            Text(self.Title, x, fieldY + (h - Layout.TextSize) / 2,
-                 th.Text, Layout.TextSize, FontSystem,
-                 51, self.Enabled and 0.92 or 0.4, titleW)
-        end
+        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
+        local fieldX = x + math.min(w * 0.48, labelW + 18)
+        local fieldW = math.max(70, w - (fieldX - x))
 
         local hover = MouseIn(fieldX, fieldY, fieldW, h) and self.Enabled
         TickAnim(self, hover, self._open, State.Delta)
@@ -3240,6 +3268,14 @@ Register("Dropdown", function(parent, opts)
         local bg = mix(th.PanelHi, th.Panel, self._hover * 0.5)
         Rect(fieldX, fieldY, fieldW, h, bg, 52, 6, 0.85 + 0.1 * self._hover)
         Stroke(fieldX, fieldY, fieldW, h, th.Stroke, 53, 6, 0.5 + 0.3 * self._hover)
+
+        -- title sits outside the selection field.
+        if self.Title ~= "" then
+            Text(self.Title, x, fieldY + (h - Layout.TextSize) / 2,
+                 th.Text, Layout.TextSize, FontSystem,
+                 54, self.Enabled and 0.92 or 0.4,
+                 math.max(1, fieldX - x - 8))
+        end
 
         -- value
         local valueText = tostring(self.Value or "-")
@@ -3343,9 +3379,9 @@ Register("Dropdown", function(parent, opts)
         if not self.Enabled then return end
         local h = Layout.DropdownH
         local fieldY = y + 2
-        local titleW = self.Title ~= "" and math.min(0.46 * w, TextWidth(self.Title, Layout.TextSize, FontSystem) + 8) or 0
-        local fieldX = self.Title ~= "" and (x + titleW + 10) or x
-        local fieldW = self.Title ~= "" and math.max(70, w - titleW - 10) or w
+        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
+        local fieldX = x + math.min(w * 0.48, labelW + 18)
+        local fieldW = math.max(70, w - (fieldX - x))
 
         -- if list is open, list hit-test runs first
         if self._open then
@@ -3511,9 +3547,10 @@ Register("Textbox", function(parent, opts)
     function self:Draw(x, y, w)
         local th = State.Theme
         local h = Layout.FieldH + 2
-        local fieldX = x
         local fieldY = y + 2
-        local fieldW = w
+        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
+        local fieldX = x + math.min(w * 0.48, labelW + 18)
+        local fieldW = math.max(70, w - (fieldX - x))
 
         local hover = MouseIn(fieldX, fieldY, fieldW, h) and self.Enabled
         local focused = (Focus.Field == self._focus)
@@ -4130,7 +4167,7 @@ local function InputContent()
         end
     end
 
-    if Input.Click and State.Popup and not State.ContextMenu then
+    if Input.Click and State.Popup and not State.ContextMenu and not State.ContextMenu then
         State.Popup = nil
     end
 end
@@ -4391,22 +4428,12 @@ local Tooltip = {
     Hovered = false,
 }
 
-IsTooltipControl = function(ctrl)
-    if not ctrl then return false end
-    return ctrl.Kind == "Toggle"
-        or ctrl.Kind == "Button"
-        or ctrl.Kind == "Slider"
-        or ctrl.Kind == "RangeSlider"
-        or ctrl.Kind == "Dropdown"
-end
-
 WantTooltip = function(text)
     if not text or text == "" then return end
     Tooltip.Hovered = true
     if Tooltip.Current ~= text then
         Tooltip.Current = text
         Tooltip.LastSetAt = os.clock()
-        Tooltip.Fade = 0
     end
     Tooltip.X = Input.X
     Tooltip.Y = Input.Y
@@ -4420,10 +4447,9 @@ local function TickTooltip(dt)
 
     Tooltip.Fade = Approach(Tooltip.Fade, target, 18, dt)
 
-    if not Tooltip.Hovered and Tooltip.Fade < 0.015 then
+    if not Tooltip.Hovered and Tooltip.Fade < 0.02 then
         Tooltip.Current = nil
     end
-
     Tooltip.Hovered = false
 end
 
@@ -4464,7 +4490,6 @@ end
 local function ClearTooltip()
     Tooltip.Current = nil
     Tooltip.Fade = 0
-    Tooltip.Hovered = false
 end
 
 
@@ -4682,11 +4707,12 @@ local function Render()
     end
 
     if State.Visible < 0.005 then
-        -- The keybind overlay is independent of the main window visibility.
+        -- window hidden: skip everything
         ResetPool()
+        -- but notifications/tooltips still show
         TickNotifications(State.Delta)
-        DrawKeybindManager()
         DrawNotifications()
+        DrawKeybindManager()
         HideUnused()
         return
     end
@@ -4699,8 +4725,6 @@ local function Render()
     TickRailOpen(State.Delta)
     TickDrag(State.Delta)
     TickResize()
-    TickSectionAnimations(State.Delta)
-    TickTooltip(State.Delta)
 
     -- Recalculate after state changes so rendering uses the final geometry
     -- for this frame.
@@ -4708,12 +4732,14 @@ local function Render()
 
     -- reset drawing pool for this frame
     ResetPool()
+    Tooltip.Hovered = false
 
     -- render back-to-front
     DrawFrame()
     DrawTitleBar(State.WindowTitle, State.WindowSubtitle)
     DrawTabRail()
     DrawContent()
+    TickTooltip(State.Delta)
 
     -- Do not interact with partially revealed controls. They become live once
     -- the reveal reaches the final frame.
@@ -4798,41 +4824,44 @@ end
 DrawKeybindManager = function()
     local th = State.Theme
     local vp = Camera.ViewportSize
+    local w = math.min(390, vp.X - 32)
+    local h = math.min(430, vp.Y - 32)
+    local x = math.floor((vp.X - w) / 2)
+    local y = math.floor((vp.Y - h) / 2)
+
+    Rect(x + 4, y + 5, w, h, Color3.new(0,0,0), 330, 12, 0.35)
+    Rect(x, y, w, h, th.Base, 331, 12, 0.98)
+    Stroke(x, y, w, h, th.Stroke, 332, 12, 0.8)
+    Text("Keybinds", x + 16, y + 14, th.Text, 15, FontBold, 333, 1)
+    Text("All active keybind controls", x + 16, y + 34, th.TextDim, 11, FontSystem, 333, 0.7)
+
+    local closeX, closeY, closeW, closeH = x + w - 32, y + 10, 22, 22
+    local closeHover = MouseIn(closeX, closeY, closeW, closeH)
+    if closeHover then Rect(closeX, closeY, closeW, closeH, th.Danger, 334, 6, 0.16) end
+    Text("x", closeX + 7, closeY + 3, closeHover and th.Danger or th.TextDim, 12, FontBold, 335, 1)
+
     local list = CollectKeybinds()
-    if #list == 0 then return end
-
-    local rowH = 24
-    local padX = 10
-    local padY = 8
-    local titleH = 18
-    local minW = 150
-    local maxW = math.min(270, vp.X - 24)
-    local contentW = 0
-
-    for _, entry in ipairs(list) do
-        local nameW = TextWidth(entry.Path, 11, FontSystem)
-        local valueW = TextWidth(string.upper(tostring(entry.Row.Value or "none")), 11, FontMono)
-        contentW = math.max(contentW, nameW + valueW + 28)
+    local rowY = y + 68
+    for i, entry in ipairs(list) do
+        if rowY + 34 > y + h - 10 then break end
+        local hover = MouseIn(x + 10, rowY, w - 20, 30)
+        if hover then Rect(x + 10, rowY, w - 20, 30, th.Accent, 336, 6, 0.08) end
+        Text(entry.Path, x + 18, rowY + 8, th.Text, 11, FontSystem, 337, 0.9, w - 100)
+        local value = tostring(entry.Row.Value or "none")
+        local valueW = TextWidth(value, 11, FontMono)
+        Text(string.upper(value), x + w - valueW - 20, rowY + 8, th.Accent, 11, FontMono, 337, 1)
+        rowY = rowY + 34
     end
 
-    local w = Clamp(contentW + padX * 2, minW, maxW)
-    local h = padY + titleH + (#list * rowH) + padY
-    local x = math.max(8, vp.X - w - 14)
-    local y = 14
+    if #list == 0 then
+        Text("No keybind controls have been added.", x + 18, rowY + 8, th.TextMuted, 11, FontSystem, 337, 0.8)
+    end
 
-    Rect(x + 3, y + 4, w, h, Color3.new(0, 0, 0), 330, 10, 0.28)
-    Rect(x, y, w, h, th.Base, 331, 10, 0.92)
-    Stroke(x, y, w, h, th.Stroke, 332, 10, 0.62)
-
-    Text("Keybinds", x + padX, y + padY, th.Text, 12, FontBold, 333, 0.95, w - padX * 2)
-
-    local rowY = y + padY + titleH
-    for _, entry in ipairs(list) do
-        local value = string.upper(tostring(entry.Row.Value or "none"))
-        Text(entry.Path, x + padX, rowY + 4, th.TextDim, 10, FontSystem, 334, 0.9, w - 70)
-        local valueW = TextWidth(value, 10, FontMono)
-        Text(value, x + w - padX - valueW, rowY + 4, th.Accent, 10, FontMono, 334, 1, valueW + 2)
-        rowY = rowY + rowH
+    if Input.Click then
+        if closeHover or not MouseIn(x, y, w, h) then
+            State.KeybindManagerOpen = false
+            Input.Click = false
+        end
     end
 end
 
@@ -4841,7 +4870,6 @@ end
 -- ============================================================================
 
 local Library = {}
-UI = Library
 
 -- CreateWindow is the public constructor used by showcase/user scripts.
 -- The startup animation is part of the same window.
@@ -4925,6 +4953,14 @@ end
 
 function Library:SetBackground(effect)
     State.Background = NormalizeBackground(effect)
+end
+
+function Library:OpenKeybinds()
+    State.KeybindManagerOpen = true
+end
+
+function Library:CloseKeybinds()
+    State.KeybindManagerOpen = false
 end
 
 -- hotkey --------------------------------------------------------------------
@@ -5039,7 +5075,4 @@ end)
 
 
 
--- Matcha drops top-level return values from loadstring() executions.
--- Publish through the active execution environment so a caller can retrieve
--- the library even when Matcha gives the loaded chunk a separate global table.
 return Library
