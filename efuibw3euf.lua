@@ -701,17 +701,12 @@ end
 local function MouseIn(x, y, w, h)
     local mx = tonumber(Input.X) or 0
     local my = tonumber(Input.Y) or 0
-
-    -- Geometry values can briefly be nil during executor startup or a
-    -- resize/reload transition. Normalize every hit-test argument so a
-    -- transient nil can never abort the render loop.
     x = tonumber(x) or 0
     y = tonumber(y) or 0
     w = tonumber(w) or 0
     h = tonumber(h) or 0
-
-    return mx >= x and mx <= x + w
-       and my >= y and my <= y + h
+    return (mx >= x) and (mx <= x + w)
+       and (my >= y) and (my <= y + h)
 end
 
 local function MouseInCircle(cx, cy, radius)
@@ -1207,7 +1202,11 @@ local function Clamp(v, lo, hi)
 end
 
 local function PointInRect(px, py, x, y, w, h)
-    return px >= x and px <= x + w and py >= y and py <= y + h
+    px, py = tonumber(px) or 0, tonumber(py) or 0
+    x, y = tonumber(x) or 0, tonumber(y) or 0
+    w, h = tonumber(w) or 0, tonumber(h) or 0
+    return (px >= x) and (px <= x + w)
+       and (py >= y) and (py <= y + h)
 end
 
 local function Distance2(x1, y1, x2, y2)
@@ -4824,44 +4823,49 @@ end
 DrawKeybindManager = function()
     local th = State.Theme
     local vp = Camera.ViewportSize
-    local w = math.min(390, vp.X - 32)
-    local h = math.min(430, vp.Y - 32)
-    local x = math.floor((vp.X - w) / 2)
-    local y = math.floor((vp.Y - h) / 2)
-
-    Rect(x + 4, y + 5, w, h, Color3.new(0,0,0), 330, 12, 0.35)
-    Rect(x, y, w, h, th.Base, 331, 12, 0.98)
-    Stroke(x, y, w, h, th.Stroke, 332, 12, 0.8)
-    Text("Keybinds", x + 16, y + 14, th.Text, 15, FontBold, 333, 1)
-    Text("All active keybind controls", x + 16, y + 34, th.TextDim, 11, FontSystem, 333, 0.7)
-
-    local closeX, closeY, closeW, closeH = x + w - 32, y + 10, 22, 22
-    local closeHover = MouseIn(closeX, closeY, closeW, closeH)
-    if closeHover then Rect(closeX, closeY, closeW, closeH, th.Danger, 334, 6, 0.16) end
-    Text("x", closeX + 7, closeY + 3, closeHover and th.Danger or th.TextDim, 12, FontBold, 335, 1)
-
     local list = CollectKeybinds()
-    local rowY = y + 68
-    for i, entry in ipairs(list) do
-        if rowY + 34 > y + h - 10 then break end
-        local hover = MouseIn(x + 10, rowY, w - 20, 30)
-        if hover then Rect(x + 10, rowY, w - 20, 30, th.Accent, 336, 6, 0.08) end
-        Text(entry.Path, x + 18, rowY + 8, th.Text, 11, FontSystem, 337, 0.9, w - 100)
-        local value = tostring(entry.Row.Value or "none")
-        local valueW = TextWidth(value, 11, FontMono)
-        Text(string.upper(value), x + w - valueW - 20, rowY + 8, th.Accent, 11, FontMono, 337, 1)
-        rowY = rowY + 34
-    end
 
+    -- Persistent HUD overlay: always visible, including while the main window
+    -- is hidden with the menu key. It is intentionally not a popup and has no
+    -- close button or interaction.
+    local maxRows = math.min(#list, 8)
+    local rowH = 24
+    local headerH = 28
+    local w = 190
+    local h = headerH + math.max(1, maxRows) * rowH + 10
+    local x = math.max(10, vp.X - w - 18)
+    local y = 18
+
+    Rect(x + 3, y + 4, w, h, Color3.new(0, 0, 0), 330, 10, 0.35)
+    Rect(x, y, w, h, th.Base, 331, 10, 0.94)
+    Stroke(x, y, w, h, th.Stroke, 332, 10, 0.75)
+    Text("Keybinds", x + 12, y + 8, th.Text, 13, FontBold, 333, 1)
+
+    local rowY = y + headerH
     if #list == 0 then
-        Text("No keybind controls have been added.", x + 18, rowY + 8, th.TextMuted, 11, FontSystem, 337, 0.8)
+        Text("No keybinds", x + 12, rowY + 5, th.TextMuted, 10, FontSystem, 334, 0.8)
+        return
     end
 
-    if Input.Click then
-        if closeHover or not MouseIn(x, y, w, h) then
-            State.KeybindManagerOpen = false
-            Input.Click = false
+    for i = 1, maxRows do
+        local entry = list[i]
+        local rowX = x + 8
+        local rowW = w - 16
+        if i % 2 == 0 then
+            Rect(rowX, rowY, rowW, rowH, th.Base, 334, 5, 0.28)
         end
+
+        local title = entry.Path or "Keybind"
+        local value = tostring(entry.Row and entry.Row.Value or "none")
+        Text(title, x + 14, rowY + 6, th.Text, 10, FontSystem, 335, 0.9, w - 72)
+
+        local valueW = TextWidth(string.upper(value), 10, FontMono)
+        Text(string.upper(value), x + w - valueW - 14, rowY + 6, th.Accent, 10, FontMono, 335, 1)
+        rowY = rowY + rowH
+    end
+
+    if #list > maxRows then
+        Text("+" .. tostring(#list - maxRows) .. " more", x + 14, rowY + 2, th.TextMuted, 9, FontSystem, 335, 0.7)
     end
 end
 
@@ -4956,11 +4960,11 @@ function Library:SetBackground(effect)
 end
 
 function Library:OpenKeybinds()
-    State.KeybindManagerOpen = true
+    -- Persistent keybind overlay is always visible; no popup state is needed.
 end
 
 function Library:CloseKeybinds()
-    State.KeybindManagerOpen = false
+    -- Persistent keybind overlay is always visible; no popup state is needed.
 end
 
 -- hotkey --------------------------------------------------------------------
