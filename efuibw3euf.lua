@@ -1674,17 +1674,17 @@ local function DrawBackgroundEffect()
         spacing = math.max(12, spacing)
         local offset = (now * 8) % spacing
         for gx = x - spacing + offset, x + w, spacing do
-            Line(gx, y + Layout.TopbarH, gx, y + h, th.AccentA, 11, 1, 0.34 * intensity)
+            Line(gx, y + Layout.TopbarH, gx, y + h, th.AccentA, 11, 1, 0.70 * intensity)
         end
         for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
-            Line(x, gy, x + w, gy, th.AccentA, 11, 1, 0.34 * intensity)
+            Line(x, gy, x + w, gy, th.AccentA, 11, 1, 0.70 * intensity)
         end
     elseif kind == "dots" then
         local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 24
         spacing = math.max(10, spacing)
         for gx = x + 12, x + w - 12, spacing do
             for gy = y + Layout.TopbarH + 12, y + h - 12, spacing do
-                Circle(gx, gy, 1.1, th.AccentA, 11, true, 1, 8, 0.34 * intensity)
+                Circle(gx, gy, 1.1, th.AccentA, 11, true, 1, 8, 0.70 * intensity)
             end
         end
     elseif kind == "scanlines" then
@@ -1692,7 +1692,7 @@ local function DrawBackgroundEffect()
         spacing = math.max(4, spacing)
         local offset = (now * 18) % spacing
         for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
-            Line(x, gy, x + w, gy, th.Text, 11, 1, 0.10 * intensity)
+            Line(x, gy, x + w, gy, th.Text, 11, 1, 0.22 * intensity)
         end
     elseif kind == "particles" then
         local count = math.floor(type(effect) == "table" and tonumber(effect.Count) or 24)
@@ -1702,7 +1702,7 @@ local function DrawBackgroundEffect()
             local speed = 4 + (i % 5) * 1.7
             local py = y + Layout.TopbarH + (((math.cos(i * 47.3) * 0.5 + 0.5) * math.max(1, h - Layout.TopbarH - 18) + now * speed) % math.max(1, h - Layout.TopbarH - 18)) + 6
             local pulse = 0.5 + 0.5 * math.sin(now * 2 + i)
-            Circle(px, py, 1 + pulse * 0.8, th.AccentA, 11, true, 1, 10, (0.34 + pulse * 0.20) * intensity)
+            Circle(px, py, 1 + pulse * 0.8, th.AccentA, 11, true, 1, 10, (0.70 + pulse * 0.25) * intensity)
         end
     elseif kind == "aurora" then
         local bands = type(effect) == "table" and math.floor(tonumber(effect.Bands) or 5) or 5
@@ -1712,7 +1712,7 @@ local function DrawBackgroundEffect()
             local px = x + w * (0.5 + math.sin(phase) * 0.42)
             local py = y + Layout.TopbarH + (h - Layout.TopbarH) * (0.2 + i / bands * 0.65)
             local r = 55 + i * 7
-            Circle(px, py, r, (i % 2 == 0) and th.AccentB or th.AccentA, 11, true, 1, 32, 0.045 * intensity)
+            Circle(px, py, r, (i % 2 == 0) and th.AccentB or th.AccentA, 11, true, 1, 32, 0.10 * intensity)
         end
     end
 end
@@ -4835,7 +4835,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v29"
+Library.Version       = "v30-ACTUAL-0928"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -4997,7 +4997,7 @@ end)
 
 
 
-Library.Version = "v29"
+Library.Version = "v30-ACTUAL-0928"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
