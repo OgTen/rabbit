@@ -1150,7 +1150,6 @@ local State = {
 
     -- notifications queue
     Notifications = {},
-    KeybindManagerOpen = false,
     ContextMenu = nil,
 }
 
@@ -1196,6 +1195,9 @@ end
 -- ============================================================================
 
 local function Clamp(v, lo, hi)
+    v = tonumber(v) or 0
+    lo = tonumber(lo) or 0
+    hi = tonumber(hi) or 0
     if v < lo then return lo end
     if v > hi then return hi end
     return v
@@ -2818,7 +2820,7 @@ end
 -- ============================================================================
 
 local WantTooltip
-local DrawKeybindManager
+local DrawKeybindOverlay
 
 local ContentCursor = { y = 0 }
 
@@ -4711,7 +4713,7 @@ local function Render()
         -- but notifications/tooltips still show
         TickNotifications(State.Delta)
         DrawNotifications()
-        DrawKeybindManager()
+        DrawKeybindOverlay()
         HideUnused()
         return
     end
@@ -4753,7 +4755,7 @@ local function Render()
     DrawNotifications()
     DrawTooltip()
     DrawContextMenu()
-    DrawKeybindManager()
+    DrawKeybindOverlay()
 
     -- HUD boxes
     DrawHUDBoxes()
@@ -4820,7 +4822,7 @@ local function CollectKeybinds()
     return out
 end
 
-DrawKeybindManager = function()
+DrawKeybindOverlay = function()
     local th = State.Theme
     local vp = Camera.ViewportSize
     local list = CollectKeybinds()
@@ -4960,11 +4962,11 @@ function Library:SetBackground(effect)
 end
 
 function Library:OpenKeybinds()
-    -- Persistent keybind overlay is always visible; no popup state is needed.
+    -- Kept for API compatibility. The keybind overlay is always visible.
 end
 
 function Library:CloseKeybinds()
-    -- Persistent keybind overlay is always visible; no popup state is needed.
+    -- Kept for API compatibility. The keybind overlay is always visible.
 end
 
 -- hotkey --------------------------------------------------------------------
@@ -5078,6 +5080,8 @@ task.spawn(function()
 end)
 
 
+
+Library.Version = "v21"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
