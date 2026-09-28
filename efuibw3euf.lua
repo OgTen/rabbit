@@ -1368,6 +1368,7 @@ local State = {
 
     -- notifications queue
     Notifications = {},
+    NotificationPosition = "top_left",
 }
 
 
@@ -3712,11 +3713,27 @@ Register("Dropdown", function(parent, opts)
         local listH = visible * rowH + 8
 
         -- One canonical on-screen rectangle is used by drawing AND input.
-        -- Clamp horizontally into the content viewport when the window shrinks.
+        -- Size the selector to its actual content instead of always stretching
+        -- to the full field width. It can grow to a fixed cap, then text uses
+        -- ellipsis inside the popup.
         local minX = Geometry.ContentX + 4
         local maxRight = Geometry.ContentX + Geometry.ContentW - 4
-        local popupW = math.max(70, math.min(fieldW, math.max(70, maxRight - minX)))
-        local popupX = Clamp(fieldX, minX, math.max(minX, maxRight - popupW))
+        local availableW = math.max(70, maxRight - minX)
+        local maxPopupW = math.min(260, availableW)
+
+        local widest = TextWidth(self:_DisplayValue(), Layout.TextSize, FontBold)
+        for _, option in ipairs(self.Options) do
+            widest = math.max(widest, TextWidth(tostring(option), Layout.TextSize, FontSystem))
+        end
+
+        local scrollbarRoom = (#self.Options > maxVisible) and 17 or 8
+        local desiredW = widest + 18 + scrollbarRoom
+        local popupW = Clamp(desiredW, 70, maxPopupW)
+
+        -- Prefer aligning the popup's right edge with the selector field. This
+        -- keeps a compact popup visually attached to the selected-value chip.
+        local preferredX = fieldX + fieldW - popupW
+        local popupX = Clamp(preferredX, minX, math.max(minX, maxRight - popupW))
         local popupY = fieldY + h + 3
 
         local maxScroll = math.max(0, #self.Options - maxVisible)
@@ -3759,11 +3776,14 @@ Register("Dropdown", function(parent, opts)
                  math.max(1, fieldX - x - 8))
         end
 
-        local valueMaxW = math.max(1, fieldW - 42)
+        -- Compact selected-value spacing: keep only a small gap before the
+        -- arrow instead of the older oversized right padding.
+        local valueRightPad = 22
+        local valueMaxW = math.max(1, fieldW - valueRightPad - 6)
         local valueText = FitText(self:_DisplayValue(), valueMaxW, Layout.TextSize, FontBold)
         local valueW = TextWidth(valueText, Layout.TextSize, FontBold)
         Text(valueText,
-             fieldX + fieldW - 26 - valueW,
+             fieldX + fieldW - valueRightPad - valueW,
              fieldY + (h - Layout.TextSize) / 2,
              th.Accent, Layout.TextSize, FontBold,
              54, self.Enabled and 1 or 0.4,
@@ -3817,8 +3837,9 @@ Register("Dropdown", function(parent, opts)
         Rect(pg.X, pg.Y, pg.W, pg.H, th.Base, 61, 6, 0.98 * self._openAnim)
         Stroke(pg.X, pg.Y, pg.W, pg.H, th.Accent, 62, 6, 0.5 * self._openAnim)
 
-        local scrollbarReserve = maxScroll > 0 and 13 or 4
-        local labelMaxW = math.max(1, pg.W - 16 - scrollbarReserve)
+        local scrollbarReserve = maxScroll > 0 and 11 or 3
+        local optionPadX = 8
+        local labelMaxW = math.max(1, pg.W - optionPadX - 5 - scrollbarReserve)
 
         for i = 1, pg.Visible do
             local idx = i + math.floor(self._listScroll)
@@ -3838,7 +3859,7 @@ Register("Dropdown", function(parent, opts)
             local optionText = FitText(option, labelMaxW, Layout.TextSize, FontSystem)
             local labelColor = selected and th.Accent or th.Text
             Text(optionText,
-                 pg.X + 12, ry + (pg.RowH - Layout.TextSize) / 2,
+                 pg.X + optionPadX, ry + (pg.RowH - Layout.TextSize) / 2,
                  labelColor, Layout.TextSize, FontSystem,
                  64, (selected and 1 or 0.85) * self._openAnim,
                  labelMaxW)
@@ -4826,33 +4847,48 @@ local function NextTheme()
 end
 
 -- ============================================================================
---  NOTIFICATIONS  --  stacked toast queue, slide-in from right
+--  NOTIFICATIONS  --  premium viewport-anchored toast system
 -- ============================================================================
 
 local Notification = {}
 Notification.__index = Notification
 
 local NoteColors = {
-    info    = { accent = "Accent",   icon = "info"    },
-    success = { accent = "Success",  icon = "success" },
-    warning = { accent = "Warning",  icon = "warning" },
-    error   = { accent = "Danger",   icon = "error"   },
+    info    = { accent = "Accent",   icon = "info",    label = "INFO"    },
+    success = { accent = "Success",  icon = "success", label = "SUCCESS" },
+    warning = { accent = "Warning",  icon = "warning", label = "WARNING" },
+    error   = { accent = "Danger",   icon = "error",   label = "ERROR"   },
 }
+
+local function NormalizeNotificationPosition(value)
+    local p = string.lower(tostring(value or "top_left"))
+    p = string.gsub(p, "%s+", "_")
+    p = string.gsub(p, "-", "_")
+    if p == "topleft" then p = "top_left" end
+    if p == "topright" then p = "top_right" end
+    if p == "bottomleft" then p = "bottom_left" end
+    if p == "bottomright" then p = "bottom_right" end
+
+    if p ~= "top_left" and p ~= "top_right"
+       and p ~= "bottom_left" and p ~= "bottom_right" then
+        p = "top_left"
+    end
+    return p
+end
 
 local function Notify(opts)
     opts = opts or {}
     local entry = setmetatable({
-        Title    = opts.Title   or "Notice",
-        Content  = opts.Content or "",
-        Type     = opts.Type    or "info",
-        Duration = opts.Duration or 4,
+        Title      = tostring(opts.Title or opts.title or "Notice"),
+        Content    = tostring(opts.Content or opts.content or ""),
+        Type       = string.lower(tostring(opts.Type or opts.type or "info")),
+        Duration   = math.max(0.5, tonumber(opts.Duration or opts.duration) or 4),
 
-        -- animation
-        Fade     = 0,
-        Slide    = 0,
-        Life     = 0,
-        TargetLife = opts.Duration or 4,
-        Done     = false,
+        Fade       = 0,
+        Slide      = 0,
+        Life       = 0,
+        TargetLife = math.max(0.5, tonumber(opts.Duration or opts.duration) or 4),
+        Done       = false,
     }, Notification)
 
     State.Notifications[#State.Notifications + 1] = entry
@@ -4867,23 +4903,25 @@ local function TickNotifications(dt)
         local n = list[i]
         n.Life = n.Life + dt
 
-        -- fade in fast, fade out over last 0.4s
         local remaining = n.TargetLife - n.Life
         local targetFade, targetSlide
 
-        if n.Life < 0.25 then
-            targetFade = n.Life / 0.25
-            targetSlide = (1 - n.Life / 0.25) * 40
-        elseif remaining < 0.4 then
-            targetFade = math.max(0, remaining / 0.4)
-            targetSlide = (1 - math.max(0, remaining / 0.4)) * 40
+        -- Quicker premium entrance, calmer exit.
+        if n.Life < 0.22 then
+            local t = n.Life / 0.22
+            targetFade = t
+            targetSlide = (1 - t) * 34
+        elseif remaining < 0.45 then
+            local t = math.max(0, remaining / 0.45)
+            targetFade = t
+            targetSlide = (1 - t) * 26
         else
             targetFade = 1
             targetSlide = 0
         end
 
-        n.Fade  = Approach(n.Fade,  targetFade,  18, dt)
-        n.Slide = Approach(n.Slide, targetSlide, 18, dt)
+        n.Fade  = Approach(n.Fade, targetFade, 20, dt)
+        n.Slide = Approach(n.Slide, targetSlide, 20, dt)
 
         if n.Life >= n.TargetLife and n.Fade < 0.02 then
             n.Done = true
@@ -4900,52 +4938,94 @@ end
 local function DrawNotifications()
     local th = State.Theme
     local vp = Camera.ViewportSize
-    local notW = 280
-    local notH = 56
-    local gap = 8
-    local baseY = vp.Y - 60
-    local baseX = vp.X - notW - 16
+    local pos = NormalizeNotificationPosition(State.NotificationPosition)
 
-    for i = #State.Notifications, 1, -1 do
-        local n = State.Notifications[i]
+    -- Larger than the legacy 280x56 toast so important feedback stands out.
+    local notW = 326
+    local notH = 78
+    local gap = 10
+    local marginX = 18
+    local marginY = 18
+
+    local fromTop = (pos == "top_left" or pos == "top_right")
+    local fromLeft = (pos == "top_left" or pos == "bottom_left")
+
+    -- Oldest notification remains closest to the chosen anchor.
+    for i, n in ipairs(State.Notifications) do
         local a = n.Fade
         if a > 0.005 then
-            local ny = baseY - (i - 1) * (notH + gap)
-            local nx = baseX + n.Slide
+            local stackOffset = (i - 1) * (notH + gap)
+            local ny
+            if fromTop then
+                ny = marginY + stackOffset
+            else
+                ny = vp.Y - marginY - notH - stackOffset
+            end
+
+            local baseX = fromLeft and marginX or (vp.X - marginX - notW)
+            local slideDir = fromLeft and -1 or 1
+            local nx = baseX + slideDir * n.Slide
 
             local colors = NoteColors[n.Type] or NoteColors.info
             local accent = th[colors.accent] or th.Accent
+            local typeLabel = colors.label or "INFO"
 
-            -- shadow
-            Rect(nx + 2, ny + 3, notW, notH, Color3.new(0, 0, 0), 200, 10, 0.3 * a)
+            -- Deep floating shadow.
+            Rect(nx + 3, ny + 5, notW, notH,
+                 Color3.new(0, 0, 0), 370, 12, 0.34 * a)
 
-            -- body
-            Rect(nx, ny, notW, notH, th.Panel, 201, 10, 0.98 * a)
-            Stroke(nx, ny, notW, notH, accent, 202, 10, 0.65 * a)
+            -- Main glass card.
+            Rect(nx, ny, notW, notH,
+                 rgb(13, 16, 23), 371, 12, 0.97 * a)
+            Stroke(nx, ny, notW, notH,
+                   th.Stroke, 372, 12, 0.72 * a)
 
-            -- accent stripe (left)
-            Rect(nx, ny + 6, 3, notH - 12, accent, 203, 1.5, a * 0.95)
+            -- Strong status rail and subtle accent cap.
+            Rect(nx, ny + 9, 4, notH - 18,
+                 accent, 373, 2, 0.98 * a)
+            Rect(nx + 14, ny + 1, notW - 28, 1,
+                 accent, 373, 0, 0.30 * a)
 
-            -- icon
-            DrawIconByName(colors.icon, nx + 12, ny + notH / 2 - 8, 16,
-                           accent, 204, a * 0.9)
+            -- Icon tile.
+            local iconBox = 38
+            local iconX = nx + 16
+            local iconY = ny + (notH - iconBox) / 2
+            Rect(iconX, iconY, iconBox, iconBox,
+                 accent, 374, 9, 0.12 * a)
+            Stroke(iconX, iconY, iconBox, iconBox,
+                   accent, 375, 9, 0.38 * a)
+            DrawIconByName(colors.icon,
+                           iconX + (iconBox - 18) / 2,
+                           iconY + (iconBox - 18) / 2,
+                           18, accent, 376, 0.98 * a)
 
-            -- title
-            Text(n.Title, nx + 38, ny + 10,
-                 th.Text, 13, FontBold, 205, a * 0.98, notW - 48)
+            local textX = iconX + iconBox + 12
+            local rightPad = 14
+            local textW = notW - (textX - nx) - rightPad
 
-            -- content (word-wrapped to 2 lines if needed)
+            -- Small semantic type label above the title.
+            Text(typeLabel, textX, ny + 10,
+                 accent, 8, FontBold, 377, 0.90 * a, textW)
+
+            Text(n.Title, textX, ny + 24,
+                 th.Text, 14, FontBold, 378, 0.99 * a, textW)
+
             if n.Content ~= "" then
-                Text(n.Content, nx + 38, ny + 28,
-                     th.TextDim, 11, FontSystem, 205, a * 0.8, notW - 48)
+                Text(n.Content, textX, ny + 45,
+                     th.TextDim, 10, FontSystem, 378, 0.84 * a, textW)
             end
 
-            -- progress bar at bottom of card
-            local remain = 1 - (n.Life / n.TargetLife)
-            if remain > 0 and remain < 1 then
-                local barY = ny + notH - 3
-                local barW = (notW - 20) * remain
-                Rect(nx + 10, barY, barW, 1.5, accent, 206, 0.75, a * 0.75)
+            -- Lifetime track + accent progress. It shrinks toward the anchor.
+            local progressX = nx + 14
+            local progressY = ny + notH - 6
+            local progressW = notW - 28
+            Rect(progressX, progressY, progressW, 2,
+                 th.Track, 379, 1, 0.60 * a)
+
+            local remain = Clamp(1 - (n.Life / n.TargetLife), 0, 1)
+            if remain > 0 then
+                Rect(progressX, progressY, progressW * remain, 2,
+                     accent, 380, 1, 0.95 * a)
             end
         end
     end
@@ -5342,6 +5422,10 @@ local function Render()
         UpdatePerformanceOverlayInput()
         DrawKeybindOverlay()
         DrawPerformanceOverlay()
+        -- Custom HUD overlays are independent of the main window just like
+        -- HOTKEYS/PERFORMANCE. They remain visible, but cannot be dragged
+        -- until the main window is open again.
+        DrawHUDBoxes()
         HideUnused()
         return
     end
@@ -5855,6 +5939,13 @@ function Library:CreateWindow(opts)
     end
 
     if opts.MenuKey or opts.menuKey then State.MenuKey = string.lower(tostring(opts.MenuKey or opts.menuKey)) end
+
+    -- Notification anchor. Defaults to top-left.
+    -- Supported: top_left, top_right, bottom_left, bottom_right.
+    local notifPos = opts.NotifPos or opts.notifpos or opts.NotificationPosition or opts.notificationPosition
+    if notifPos ~= nil then
+        State.NotificationPosition = NormalizeNotificationPosition(notifPos)
+    end
     if opts.NoAnim ~= nil or opts.noAnim ~= nil then State.NoAnim = (opts.NoAnim ~= nil and opts.NoAnim or opts.noAnim) and true or false end
     if opts.Background ~= nil or opts.background ~= nil then State.Background = NormalizeBackground(opts.Background or opts.background) end
     local themeOption = opts.Theme or opts.theme
@@ -5879,7 +5970,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.5.1-INLINE-INPUT-FIX"
+Library.Version       = "v46.6-HUD-DROPDOWN-NOTIFICATIONS"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6078,7 +6169,7 @@ end)
 
 
 
-Library.Version = "v46.5.1-INLINE-INPUT-FIX"
+Library.Version = "v46.6-HUD-DROPDOWN-NOTIFICATIONS"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
