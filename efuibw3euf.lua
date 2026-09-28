@@ -348,6 +348,108 @@ local function ClearPool()
 end
 
 -- ============================================================================
+--  PERSISTENT IMAGE LOADER  --  INS-style raw byte loading for Matcha
+-- ============================================================================
+
+local function IsPictureBytes(bytes)
+    if type(bytes) ~= "string" or #bytes < 24 then return false end
+    local a, b = string.byte(bytes, 1, 2)
+    return (a == 137 and b == 80)      -- PNG
+        or (a == 255 and b == 216)     -- JPEG
+        or (a == 71 and b == 73)       -- GIF
+end
+
+local function PictureHash(text)
+    local hash = 5381
+    for i = 1, #text do
+        hash = (hash * 33 + string.byte(text, i)) % 2147483648
+    end
+    return string.format("%08x", hash)
+end
+
+local function ReadPictureBytes(source, kind)
+    local target = tostring(source or "")
+    if target == "" then return nil end
+    if IsPictureBytes(target) then return target end
+
+    local remote = string.find(target, "://", 1, true) ~= nil
+    local cache = "ShadowUI_" .. tostring(kind or "image") .. "_" .. PictureHash(target) .. ".dat"
+
+    if not remote then
+        local ok, exists = pcall(function() return isfile and isfile(target) end)
+        if ok and exists then
+            local readOk, bytes = pcall(function() return readfile(target) end)
+            if readOk and IsPictureBytes(bytes) then return bytes end
+        end
+    end
+
+    do
+        local ok, exists = pcall(function() return isfile and isfile(cache) end)
+        if ok and exists then
+            local readOk, bytes = pcall(function() return readfile(cache) end)
+            if readOk and IsPictureBytes(bytes) then return bytes end
+        end
+    end
+
+    if not remote then return nil end
+
+    local ok, bytes = pcall(function()
+        if httpget then return httpget(target) end
+        if game and game.HttpGet then return game:HttpGet(target) end
+        return nil
+    end)
+    if not ok or not IsPictureBytes(bytes) then return nil end
+
+    pcall(function()
+        if writefile then writefile(cache, bytes) end
+    end)
+
+    return bytes
+end
+
+local function LoadPicture(source, kind)
+    if source == nil or source == "" then return nil end
+    local holder = { Image = nil, Source = source }
+
+    if IsPictureBytes(source) then
+        local image = Drawing.new("Image")
+        image.Data = source
+        image.Visible = false
+        holder.Image = image
+        return holder
+    end
+
+    task.spawn(function()
+        local bytes = ReadPictureBytes(source, kind)
+        if bytes then
+            local image = Drawing.new("Image")
+            image.Data = bytes
+            image.Visible = false
+            holder.Image = image
+        end
+    end)
+
+    return holder
+end
+
+local function DrawPicture(holder, x, y, width, height, z, transparency, corner)
+    local image = holder and holder.Image
+    if not image then return false end
+
+    image.Position = Vector2.new(x, y)
+    image.Size = Vector2.new(width, height)
+    pcall(function() image.Rounding = corner or 0 end)
+    image.ZIndex = z
+    image.Transparency = math.max(0, math.min(1, transparency or 1))
+    image.Visible = image.Transparency > 0.01
+    return true
+end
+
+local function HidePicture(holder)
+    if holder and holder.Image then holder.Image.Visible = false end
+end
+
+-- ============================================================================
 --  PRIMITIVE DRAWERS  --  every visual element goes through one of these
 -- ============================================================================
 
@@ -1248,6 +1350,9 @@ local State = {
     -- window identity / appearance
     WindowTitle    = "Window",
     WindowSubtitle = "",
+    Logo           = nil,
+    LogoSource     = nil,
+    LogoSize       = 30,
     Background     = "none",
     BackgroundOptions = {},
 
@@ -1978,22 +2083,32 @@ local function DrawStartupFrame()
     local intro = math.min(st.Time / 0.55, 1)
     local ease = intro * intro * (3 - 2 * intro)
 
-    -- Minimal premium boot identity.
-    local markW = math.min(34, w * 0.14)
-    local markX = x + 18
-    local markY = y + h / 2 - 18
-
-    Rect(markX, markY, markW * ease, 2, th.AccentA, 30, 1, 0.95)
-    Rect(markX, markY + 4, math.max(8, markW * 0.55) * ease, 1,
-         th.AccentB, 31, 1, 0.55)
+    -- Logo-aware premium boot identity. The same persistent image holder is
+    -- reused by the main title bar after startup.
+    local logoSize = math.min(42, math.max(28, State.LogoSize + 8))
+    local logoX = x + 18
+    local logoY = y + math.floor((h - logoSize) / 2) - 3
+    local hasLogo = DrawPicture(State.Logo, logoX, logoY, logoSize, logoSize,
+                                Layer(32), ease, 7)
 
     local title = State.WindowTitle or "SHADOW UI"
     local titleSize = 15
-    local titleX = markX + markW + 12 - (1 - ease) * 8
+    local titleX
+    if hasLogo then
+        titleX = logoX + logoSize + 12 - (1 - ease) * 8
+    else
+        local markW = math.min(34, w * 0.14)
+        local markX = x + 18
+        local markY = y + h / 2 - 18
+        Rect(markX, markY, markW * ease, 2, th.AccentA, 30, 1, 0.95)
+        Rect(markX, markY + 4, math.max(8, markW * 0.55) * ease, 1,
+             th.AccentB, 31, 1, 0.55)
+        titleX = markX + markW + 12 - (1 - ease) * 8
+    end
     local titleY = y + h / 2 - 12
 
     Text(title, titleX, titleY, th.Text, titleSize, FontBold,
-         32, ease, math.max(40, w - (titleX - x) - 24))
+         33, ease, math.max(40, w - (titleX - x) - 24))
 
     local railX = x + 18
     local railW = math.max(70, w - 36)
@@ -2112,6 +2227,15 @@ local TitleButtons = {
 local function DrawTitleBar(title, subtitle)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
+
+    -- Persistent window logo in the top-left branding area.
+    local logoSize = math.min(State.LogoSize or 30, Layout.TopbarH - 12)
+    if State.Logo then
+        DrawPicture(State.Logo,
+                    State.X + 12,
+                    State.Y + (Layout.TopbarH - logoSize) / 2,
+                    logoSize, logoSize, Layer(35), FrameAlpha, 6)
+    end
 
     local titleSize = 15
     local titleW = TextWidth(title, titleSize, FontBold)
@@ -4855,6 +4979,7 @@ end
 local LastHotkeyState = false
 
 local function Render()
+    HidePicture(State.Logo)
     -- Startup owns the first render. Never draw the full window before
     -- CreateWindow has explicitly started the startup sequence.
     if not State.Startup.Active and State.Frame == 0 then
@@ -5461,6 +5586,15 @@ function Library:CreateWindow(opts)
 
     State.WindowTitle = tostring(opts.Title or opts.title or opts.Name or opts.name or State.WindowTitle or "Window")
     State.WindowSubtitle = tostring(opts.Subtitle or opts.subtitle or "")
+
+    local logoSource = opts.Logo or opts.logo
+    if logoSource ~= nil and logoSource ~= State.LogoSource then
+        HidePicture(State.Logo)
+        State.LogoSource = logoSource
+        State.Logo = LoadPicture(logoSource, "logo")
+    end
+    local logoSize = tonumber(opts.LogoSize or opts.logoSize)
+    if logoSize then State.LogoSize = math.max(16, math.min(48, logoSize)) end
     if opts.MenuKey or opts.menuKey then State.MenuKey = string.lower(tostring(opts.MenuKey or opts.menuKey)) end
     if opts.NoAnim ~= nil or opts.noAnim ~= nil then State.NoAnim = (opts.NoAnim ~= nil and opts.NoAnim or opts.noAnim) and true or false end
     if opts.Background ~= nil or opts.background ~= nil then State.Background = NormalizeBackground(opts.Background or opts.background) end
@@ -5486,7 +5620,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v42.1-UNIFIED-OVERLAYS"
+Library.Version       = "v43-INS-IMAGE-LOADER"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5685,7 +5819,7 @@ end)
 
 
 
-Library.Version = "v42.1-UNIFIED-OVERLAYS"
+Library.Version = "v43-INS-IMAGE-LOADER"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
