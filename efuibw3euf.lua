@@ -175,11 +175,12 @@ local Themes = {
 
 local BackgroundNames = {
     none = true,
-    grid = true,
     dots = true,
     scanlines = true,
     particles = true,
     aurora = true,
+    snow = true,
+    rainfall = true,
 }
 
 local function NormalizeBackground(value)
@@ -677,9 +678,9 @@ local Icons = {
     -- window glyphs
     ["window"]    = { {4,5, 16,5, 1.6, 1}, {4,5, 4,15, 1.6, 1}, {16,5, 16,15, 1.6, 1}, {4,15, 16,15, 1.6, 1}, {4,9, 16,9, 1.6, 1} },
     ["home"] = {
-        {4,9,10,4,1.45,1},{10,4,16,9,1.45,1},
-        {5.5,8,5.5,16,1.45,1},{5.5,16,14.5,16,1.45,1},{14.5,16,14.5,8,1.45,1},
-        {8.5,16,8.5,11.5,1.3,1},{8.5,11.5,11.5,11.5,1.3,1},{11.5,11.5,11.5,16,1.3,1}
+        {3.5,9.5,10,3.8,1.55,1},{10,3.8,16.5,9.5,1.55,1},
+        {5.2,8.1,5.2,16.2,1.5,1},{5.2,16.2,14.8,16.2,1.5,1},{14.8,16.2,14.8,8.1,1.5,1},
+        {8.4,16.2,8.4,11.2,1.35,1},{8.4,11.2,11.6,11.2,1.35,1},{11.6,11.2,11.6,16.2,1.35,1}
     },
     ["gear"]      = {
         {10,3, 10,5, 1.6, 1}, {10,15, 10,17, 1.6, 1},
@@ -697,10 +698,13 @@ local Icons = {
     ["shield"]    = { {10,3, 16,5, 1.6, 1}, {16,5, 16,10, 1.6, 1}, {16,10, 10,17, 1.6, 1}, {10,17, 4,10, 1.6, 1}, {4,10, 4,5, 1.6, 1}, {4,5, 10,3, 1.6, 1} },
     ["bell"]      = { {6,9, 6,14, 1.6, 1}, {14,9, 14,14, 1.6, 1}, {6,9, 10,4, 1.6, 1}, {10,4, 14,9, 1.6, 1}, {4,14, 16,14, 1.6, 1}, {9,16, 11,16, 1.6, 1} },
     ["eye"] = {
-        {3,10,6.5,6.5,1.4,1},{6.5,6.5,10,5.5,1.4,1},{10,5.5,13.5,6.5,1.4,1},
-        {13.5,6.5,17,10,1.4,1},{17,10,13.5,13.5,1.4,1},{13.5,13.5,10,14.5,1.4,1},
-        {10,14.5,6.5,13.5,1.4,1},{6.5,13.5,3,10,1.4,1},
-        {8,10,10,8,1.35,1},{10,8,12,10,1.35,1},{12,10,10,12,1.35,1},{10,12,8,10,1.35,1}
+        {2.8,10,5.8,7,1.5,1},{5.8,7,10,5.4,1.5,1},{10,5.4,14.2,7,1.5,1},
+        {14.2,7,17.2,10,1.5,1},{17.2,10,14.2,13,1.5,1},{14.2,13,10,14.6,1.5,1},
+        {10,14.6,5.8,13,1.5,1},{5.8,13,2.8,10,1.5,1},
+        {7.8,10,8.45,8.45,1.45,1},{8.45,8.45,10,7.8,1.45,1},
+        {10,7.8,11.55,8.45,1.45,1},{11.55,8.45,12.2,10,1.45,1},
+        {12.2,10,11.55,11.55,1.45,1},{11.55,11.55,10,12.2,1.45,1},
+        {10,12.2,8.45,11.55,1.45,1},{8.45,11.55,7.8,10,1.45,1}
     },
     ["search"]    = { {3,3, 12,3, 1.6, 1}, {12,3, 12,12, 1.6, 1}, {12,12, 3,12, 1.6, 1}, {3,12, 3,3, 1.6, 1}, {12,12, 17,17, 2, 1} },
     ["crosshair"] = { {10,3, 10,7, 1.4, 1}, {10,13, 10,17, 1.4, 1}, {3,10, 7,10, 1.4, 1}, {13,10, 17,10, 1.4, 1}, {6,10, 6,7, 1.3, 0.8}, {6,7, 10,7, 1.3, 0.8}, {10,7, 14,7, 1.3, 0.8}, {14,7, 14,10, 1.3, 0.8}, {14,10, 14,13, 1.3, 0.8}, {14,13, 10,13, 1.3, 0.8}, {10,13, 6,13, 1.3, 0.8}, {6,13, 6,10, 1.3, 0.8} },
@@ -714,10 +718,10 @@ local Icons = {
     ["edit"]      = { {5,15, 7,9, 1.6, 1}, {7,9, 15,3, 1.6, 1}, {15,3, 17,5, 1.6, 1}, {17,5, 9,11, 1.6, 1}, {9,11, 5,15, 1.6, 1}, {5,15, 3,17, 1.6, 1}, {3,17, 5,17, 1.6, 1} },
 
     -- status glyphs
-    ["info"]      = { {10,3, 10,3.5, 1.8, 1}, {10,6, 10,16, 1.6, 1} },
-    ["warning"]   = { {10,3, 17,16, 1.6, 1}, {17,16, 3,16, 1.6, 1}, {3,16, 10,3, 1.6, 1}, {10,8, 10,12, 1.6, 1}, {10,14, 10,14.5, 1.6, 1} },
-    ["error"]     = { {10,3, 10,3.5, 1.8, 1}, {10,5, 10,13, 1.6, 1}, {10,15, 10,15.5, 1.6, 1} },
-    ["success"]   = { {10,3, 10,3.5, 1.8, 1}, {7,10, 9,12, 1.8, 1}, {9,12, 14,5, 1.8, 1} },
+    ["info"]      = { {10,4.2,10,4.7,2.1,1}, {10,8,10,15.5,1.75,1}, {8.3,8,10,8,1.55,0.9} },
+    ["warning"]   = { {10,2.8,17.2,16.4,1.65,1}, {17.2,16.4,2.8,16.4,1.65,1}, {2.8,16.4,10,2.8,1.65,1}, {10,7.2,10,12.2,1.8,1}, {10,14.2,10,14.7,2.1,1} },
+    ["error"]     = { {4.2,4.2,15.8,15.8,1.8,1}, {15.8,4.2,4.2,15.8,1.8,1} },
+    ["success"]   = { {4.2,10.2,8.2,14.1,1.9,1}, {8.2,14.1,15.9,5.8,1.9,1} },
 
     -- misc
     ["star"]      = { {10,3, 11.5,8, 1.5, 1}, {11.5,8, 17,8, 1.5, 1}, {17,8, 12.5,11.5, 1.5, 1}, {12.5,11.5, 14.5,17, 1.5, 1}, {14.5,17, 10,13.5, 1.5, 1}, {10,13.5, 5.5,17, 1.5, 1}, {5.5,17, 7.5,11.5, 1.5, 1}, {7.5,11.5, 3,8, 1.5, 1}, {3,8, 8.5,8, 1.5, 1}, {8.5,8, 10,3, 1.5, 1} },
@@ -730,14 +734,15 @@ local Icons = {
     ["zap"]       = { {12,3, 6,10, 1.6, 1}, {6,10, 10,10, 1.6, 1}, {10,10, 8,17, 1.6, 1}, {8,17, 15,8, 1.6, 1}, {15,8, 11,8, 1.6, 1} },
     ["settings-sliders"] = { {3,5, 17,5, 1.5, 1}, {3,10, 17,10, 1.5, 1}, {3,15, 17,15, 1.5, 1}, {6,3, 6,7, 1.7, 1}, {13,8, 13,12, 1.7, 1}, {8,13, 8,17, 1.7, 1} },
     ["keyboard"] = {
-        {3,5,17,5,1.4,1},{17,5,17,15,1.4,1},{17,15,3,15,1.4,1},{3,15,3,5,1.4,1},
-        {5,8,6,8,1.4,1},{8,8,9,8,1.4,1},{11,8,12,8,1.4,1},{14,8,15,8,1.4,1},
-        {5,11,6,11,1.4,1},{8,11,9,11,1.4,1},{11,11,15,11,1.4,1}
+        {2.8,5,17.2,5,1.5,1},{17.2,5,17.2,15.2,1.5,1},{17.2,15.2,2.8,15.2,1.5,1},{2.8,15.2,2.8,5,1.5,1},
+        {5,8,6.2,8,1.55,1},{8,8,9.2,8,1.55,1},{11,8,12.2,8,1.55,1},{14,8,15.2,8,1.55,1},
+        {5,11,6.2,11,1.55,1},{8,11,9.2,11,1.55,1},{11,11,15.2,11,1.55,1},
+        {6.5,13.2,13.5,13.2,1.35,0.85}
     },
     ["sparkles"] = {
-        {10,3,10,8,1.4,1},{7.5,5.5,12.5,5.5,1.4,1},
-        {15,10,15,15,1.3,1},{12.5,12.5,17.5,12.5,1.3,1},
-        {6,11,6,16,1.3,1},{3.5,13.5,8.5,13.5,1.3,1}
+        {9.5,2.8,9.5,8.4,1.5,1},{6.7,5.6,12.3,5.6,1.5,1},
+        {14.8,9.2,14.8,15.3,1.4,1},{11.75,12.25,17.85,12.25,1.4,1},
+        {5.4,10.8,5.4,16.3,1.35,0.9},{2.65,13.55,8.15,13.55,1.35,0.9}
     },
 
 }
@@ -752,6 +757,25 @@ local function DrawIconByName(name, x, y, size, color, z, alpha, thickness)
     if not name then return false end
     local key = string.lower(tostring(name))
     if key == "settings" then key = "gear" end
+
+    -- A few high-visibility icons benefit from real circular primitives rather
+    -- than approximating every curve with polygonal line segments.
+    if key == "gear" then
+        local cx, cy = x + size / 2, y + size / 2
+        local sc = size / 20
+        local thick = math.max(1, math.min(1.8, (thickness or 1.45) * sc))
+        Circle(cx, cy, size * 0.22, color, z, false, thick, 18, alpha or 1)
+        Circle(cx, cy, size * 0.065, color, z + 0.1, true, 1, 14, alpha or 1)
+        for i = 0, 7 do
+            local ang = i * math.pi / 4
+            local r1, r2 = size * 0.29, size * 0.40
+            Bar(cx + math.cos(ang) * r1, cy + math.sin(ang) * r1,
+                cx + math.cos(ang) * r2, cy + math.sin(ang) * r2,
+                thick, color, z, alpha or 1)
+        end
+        return true
+    end
+
     local data = IconIndex[key]
     if not data then return false end
 
@@ -1991,54 +2015,140 @@ local function DrawBackgroundEffect()
 
     local th = State.Theme
     local x, y, w, h = State.X, State.Y, State.W, State.H
+    local top = y + Layout.TopbarH
+    local usableH = math.max(1, h - Layout.TopbarH)
     local now = os.clock()
     local intensity = type(effect) == "table" and tonumber(effect.Intensity) or nil
-    intensity = math.max(0, math.min(1, intensity or 1))
+    intensity = Clamp(intensity or 1, 0, 1)
 
-    if kind == "grid" then
-        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 32
+    -- Stable pseudo-random 0..1 value. This keeps procedural particles
+    -- deterministic without allocating particle tables every frame.
+    local function Hash(n)
+        local v = math.sin(n * 12.9898 + 78.233) * 43758.5453
+        return v - math.floor(v)
+    end
+
+    if kind == "dots" then
+        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 25
         spacing = math.max(12, spacing)
-        local offset = (now * 8) % spacing
-        for gx = x - spacing + offset, x + w, spacing do
-            Line(gx, y + Layout.TopbarH, gx, y + h, th.AccentA, 11, 1, 0.70 * intensity)
-        end
-        for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
-            Line(x, gy, x + w, gy, th.AccentA, 11, 1, 0.70 * intensity)
-        end
-    elseif kind == "dots" then
-        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 24
-        spacing = math.max(10, spacing)
-        for gx = x + 12, x + w - 12, spacing do
-            for gy = y + Layout.TopbarH + 12, y + h - 12, spacing do
-                Circle(gx, gy, 1.1, th.AccentA, 11, true, 1, 8, 0.70 * intensity)
+        local driftX = (now * 3.5) % spacing
+        local driftY = (now * 1.8) % spacing
+
+        for gx = x - spacing + driftX, x + w + spacing, spacing do
+            for gy = top - spacing + driftY, y + h + spacing, spacing do
+                if gx >= x + 5 and gx <= x + w - 5 and gy >= top + 5 and gy <= y + h - 5 then
+                    local pulse = 0.5 + 0.5 * math.sin(now * 1.25 + gx * 0.025 + gy * 0.018)
+                    Circle(gx, gy, 0.9 + pulse * 0.45,
+                           th.AccentA, 11, true, 1, 8,
+                           (0.20 + pulse * 0.22) * intensity)
+                end
             end
         end
+
     elseif kind == "scanlines" then
-        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 7
-        spacing = math.max(4, spacing)
-        local offset = (now * 18) % spacing
-        for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
-            Line(x, gy, x + w, gy, th.Text, 11, 1, 0.22 * intensity)
+        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 8
+        spacing = math.max(5, spacing)
+        local offset = (now * 14) % spacing
+
+        for gy = top - spacing + offset, y + h, spacing do
+            Line(x + 5, gy, x + w - 5, gy,
+                 th.Text, 11, 1, 0.10 * intensity)
         end
+
+        -- One soft travelling sweep keeps scanlines from looking static.
+        local sweepY = top + ((now * 34) % usableH)
+        for i = -3, 3 do
+            local strength = 1 - math.abs(i) / 4
+            Line(x + 5, sweepY + i * 2, x + w - 5, sweepY + i * 2,
+                 th.AccentA, 12, 1,
+                 0.055 * strength * intensity)
+        end
+
     elseif kind == "particles" then
-        local count = math.floor(type(effect) == "table" and tonumber(effect.Count) or 24)
-        count = math.max(4, math.min(60, count))
+        local count = math.floor(type(effect) == "table" and tonumber(effect.Count) or 30)
+        count = Clamp(count, 8, 64)
+
         for i = 1, count do
-            local px = x + ((math.sin(i * 91.7) * 0.5 + 0.5) * math.max(1, w - 24)) + 12
-            local speed = 4 + (i % 5) * 1.7
-            local py = y + Layout.TopbarH + (((math.cos(i * 47.3) * 0.5 + 0.5) * math.max(1, h - Layout.TopbarH - 18) + now * speed) % math.max(1, h - Layout.TopbarH - 18)) + 6
-            local pulse = 0.5 + 0.5 * math.sin(now * 2 + i)
-            Circle(px, py, 1 + pulse * 0.8, th.AccentA, 11, true, 1, 10, (0.70 + pulse * 0.25) * intensity)
+            local seedX = Hash(i * 2.17)
+            local seedY = Hash(i * 7.31)
+            local speed = 5 + Hash(i * 4.91) * 13
+            local sway = math.sin(now * (0.35 + Hash(i * 3.2) * 0.55) + i) * (4 + Hash(i) * 10)
+            local px = x + 10 + seedX * math.max(1, w - 20) + sway
+            local py = top + ((seedY * usableH + now * speed) % usableH)
+            local pulse = 0.5 + 0.5 * math.sin(now * 1.8 + i * 0.9)
+            local radius = 0.9 + Hash(i * 9.1) * 1.4 + pulse * 0.35
+            local col = (i % 3 == 0) and th.AccentB or th.AccentA
+
+            if px >= x + 5 and px <= x + w - 5 then
+                Circle(px, py, radius, col, 11, true, 1, 10,
+                       (0.24 + pulse * 0.34) * intensity)
+                if i % 5 == 0 then
+                    Circle(px, py, radius + 3.5, col, 10, true, 1, 12,
+                           0.045 * intensity)
+                end
+            end
         end
+
     elseif kind == "aurora" then
-        local bands = type(effect) == "table" and math.floor(tonumber(effect.Bands) or 5) or 5
-        bands = math.max(2, math.min(8, bands))
-        for i = 1, bands do
-            local phase = now * (0.25 + i * 0.025) + i * 1.7
-            local px = x + w * (0.5 + math.sin(phase) * 0.42)
-            local py = y + Layout.TopbarH + (h - Layout.TopbarH) * (0.2 + i / bands * 0.65)
-            local r = 55 + i * 7
-            Circle(px, py, r, (i % 2 == 0) and th.AccentB or th.AccentA, 11, true, 1, 32, 0.10 * intensity)
+        local bands = type(effect) == "table" and math.floor(tonumber(effect.Bands) or 6) or 6
+        bands = Clamp(bands, 3, 9)
+
+        -- Layer broad translucent orbs along moving wave paths. Multiple
+        -- overlapping points make each band feel continuous instead of like
+        -- isolated circles.
+        for band = 1, bands do
+            local col = (band % 2 == 0) and th.AccentB or th.AccentA
+            local bandY = top + usableH * (0.10 + band / (bands + 1) * 0.78)
+            for point = 0, 5 do
+                local phase = now * (0.22 + band * 0.018) + band * 1.37 + point * 0.72
+                local px = x + w * (point / 5) + math.sin(phase) * 32
+                local py = bandY + math.sin(phase * 1.23) * (12 + band * 2)
+                local radius = 38 + band * 5
+                Circle(px, py, radius, col, 10 + band, true, 1, 28,
+                       (0.025 + band * 0.004) * intensity)
+            end
+        end
+
+    elseif kind == "snow" then
+        local count = math.floor(type(effect) == "table" and tonumber(effect.Count) or 42)
+        count = Clamp(count, 12, 80)
+
+        for i = 1, count do
+            local seedX = Hash(i * 2.71)
+            local seedY = Hash(i * 8.13)
+            local depth = 0.45 + Hash(i * 5.41) * 0.85
+            local speed = 11 + depth * 18
+            local sway = math.sin(now * (0.65 + depth * 0.35) + i * 1.7) * (4 + depth * 7)
+            local px = x + 7 + seedX * math.max(1, w - 14) + sway
+            local py = top + ((seedY * usableH + now * speed) % usableH)
+            local radius = 0.8 + depth * 1.25
+            local alpha = (0.28 + depth * 0.42) * intensity
+
+            if px >= x + 5 and px <= x + w - 5 then
+                Circle(px, py, radius + 2.8, th.Text, 10, true, 1, 10, 0.035 * alpha)
+                Circle(px, py, radius, th.Text, 11, true, 1, 10, alpha)
+            end
+        end
+
+    elseif kind == "rainfall" then
+        local count = math.floor(type(effect) == "table" and tonumber(effect.Count) or 38)
+        count = Clamp(count, 12, 72)
+
+        for i = 1, count do
+            local seedX = Hash(i * 3.77)
+            local seedY = Hash(i * 9.21)
+            local depth = 0.55 + Hash(i * 4.43) * 0.75
+            local speed = 95 + depth * 115
+            local px = x + 8 + seedX * math.max(1, w - 16)
+            local py = top + ((seedY * usableH + now * speed) % (usableH + 24)) - 12
+            local length = 7 + depth * 8
+            local slant = 2.5 + depth * 2.5
+            local col = (i % 5 == 0) and th.AccentA or th.TextDim
+
+            if py >= top - 12 and py <= y + h + 4 then
+                Line(px, py, px - slant, py + length,
+                     col, 11, 1, (0.18 + depth * 0.30) * intensity)
+            end
         end
     end
 end
@@ -5213,7 +5323,33 @@ function HUDBox:SetPosition(x, y)
 end
 
 function HUDBox:Line(text, color)
-    self.Lines[#self.Lines + 1] = { Text = tostring(text or ""), Color = color }
+    -- Existing whole-line colouring remains supported:
+    --   overlay:Line("ONLINE", Color3.fromRGB(...))
+    --
+    -- Rich per-segment colouring:
+    --   overlay:Line({
+    --       {"STATUS  ", white},
+    --       {"ONLINE", green},
+    --   })
+    if type(text) == "table" and not text.Text and not text.text then
+        local segments = {}
+        for _, part in ipairs(text) do
+            if type(part) == "table" then
+                segments[#segments + 1] = {
+                    Text = tostring(part.Text or part.text or part[1] or ""),
+                    Color = part.Color or part.color or part[2],
+                }
+            else
+                segments[#segments + 1] = { Text = tostring(part), Color = color }
+            end
+        end
+        self.Lines[#self.Lines + 1] = { Segments = segments, Color = color }
+    else
+        self.Lines[#self.Lines + 1] = {
+            Text = tostring((type(text) == "table" and (text.Text or text.text or text[1])) or text or ""),
+            Color = (type(text) == "table" and (text.Color or text.color or text[2])) or color,
+        }
+    end
     return self
 end
 
@@ -5224,8 +5360,13 @@ end
 function HUDBox:SetLines(lines)
     self.Lines = {}
     for _, line in ipairs(lines or {}) do
-        if type(line) == "table" then
-            self:Line(line.Text or line.text or line[1] or "", line.Color or line.color or line[2])
+        if type(line) == "table" and (line.Segments or line.segments) then
+            self:Line(line.Segments or line.segments, line.Color or line.color)
+        elseif type(line) == "table" and (line.Text or line.text) then
+            self:Line(line.Text or line.text, line.Color or line.color)
+        elseif type(line) == "table" then
+            -- Array-style tables are treated as rich coloured segments.
+            self:Line(line)
         else
             self:Line(line)
         end
@@ -5296,15 +5437,33 @@ local function DrawHUDBoxes()
                  box.X + box.W - 10, box.Y + headerH - 1,
                  th.Accent, 354, 1, 0.22)
 
-            -- Content uses the same bold, compact overlay typography.
+            -- Content supports either a whole-line colour or multiple
+            -- independently coloured text segments on the same row.
             for i, line in ipairs(box.Lines) do
                 local rowY = box.Y + headerH + contentPadY + (i - 1) * lineH
                 if rowY + 12 <= box.Y + totalH - 5 then
-                    Text(line.Text, box.X + padX,
-                         TextMidY(rowY, lineH, 10),
-                         line.Color or th.Text,
-                         10, FontBold, 355, 0.96,
-                         box.W - padX * 2)
+                    local tx = box.X + padX
+                    local maxRight = box.X + box.W - padX
+                    local ty = TextMidY(rowY, lineH, 10)
+
+                    if line.Segments then
+                        for _, segment in ipairs(line.Segments) do
+                            if tx >= maxRight then break end
+                            local room = maxRight - tx
+                            local segmentText = TrimText(tostring(segment.Text or ""), room, 10, FontBold)
+                            if segmentText ~= "" then
+                                Text(segmentText, tx, ty,
+                                     segment.Color or line.Color or th.Text,
+                                     10, FontBold, 355, 0.96, room)
+                                tx = tx + TextWidth(segmentText, 10, FontBold)
+                            end
+                        end
+                    else
+                        Text(line.Text or "", tx, ty,
+                             line.Color or th.Text,
+                             10, FontBold, 355, 0.96,
+                             maxRight - tx)
+                    end
                 end
             end
         else
@@ -5865,7 +6024,7 @@ local function EnsureGlobalSettingsTab(library)
     })
     Controls.Dropdown(appearance, {
         Title = "Background",
-        Options = {"none", "grid", "dots", "scanlines", "particles", "aurora"},
+        Options = {"none", "dots", "scanlines", "particles", "aurora", "snow", "rainfall"},
         Default = type(State.Background) == "table" and (State.Background.Type or "none") or State.Background,
         Callback = function(value) State.Background = NormalizeBackground(value) end,
     })
@@ -6013,7 +6172,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.7-HUD-DROPDOWN-NOTIFY-COMETS"
+Library.Version       = "v46.8-EFFECTS-COLORED-HUD-ICONS"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6212,7 +6371,7 @@ end)
 
 
 
-Library.Version = "v46.7-HUD-DROPDOWN-NOTIFY-COMETS"
+Library.Version = "v46.8-EFFECTS-COLORED-HUD-ICONS"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
