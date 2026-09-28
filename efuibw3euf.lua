@@ -1353,6 +1353,10 @@ local State = {
     Logo           = nil,
     LogoSource     = nil,
     LogoSize       = 30,
+    BackgroundImage = nil,
+    BackgroundImageSource = nil,
+    BackgroundImageOpacity = 0.28,
+    BackgroundImageRounding = 8,
     Background     = "none",
     BackgroundOptions = {},
 
@@ -2022,13 +2026,23 @@ local function DrawBackgroundEffect()
     end
 end
 
-local function DrawFrame()
+local function DrawFrame(hideBackgroundImage)
     local th = State.Theme
 
     -- One continuous translucent glass pane. It uses its own alpha path so
     -- the rest of the UI keeps the exact same transparency behaviour.
     GlassSurface(State.X, State.Y, State.W, State.H,
                  rgb(18, 21, 30), 10, Layout.Corner)
+
+    -- Optional persistent image wallpaper, above the base glass and behind
+    -- effects, separators, sidebar/content surfaces and controls.
+    if State.BackgroundImage and not hideBackgroundImage then
+        DrawPicture(State.BackgroundImage,
+                    State.X, State.Y, State.W, State.H,
+                    Layer(11),
+                    math.max(0, math.min(1, State.BackgroundImageOpacity or 0.28)) * FrameAlpha,
+                    State.BackgroundImageRounding or Layout.Corner)
+    end
 
     -- A restrained top reflection. This follows the same outer silhouette and
     -- does not create a second panel or a horizontal split.
@@ -5067,6 +5081,7 @@ local function Render()
     local startupIsReveal = State.Startup.Active and State.Startup.Phase == "reveal"
 
     if startupIsLoading then
+        HidePicture(State.BackgroundImage)
         -- Hard-lock the loading frame height to exactly 80px every frame.
         -- This prevents any other window/layout logic from restoring the
         -- normal window height while the loading phase is active.
@@ -5084,6 +5099,7 @@ local function Render()
 
     if startupIsShrink then
         HidePicture(State.Logo)
+        HidePicture(State.BackgroundImage)
         Geometry.Recalculate()
         ResetPool()
         local radius = math.min(Layout.Corner, math.max(1, State.H / 2))
@@ -5100,7 +5116,7 @@ local function Render()
         HidePicture(State.Logo)
         Geometry.Recalculate()
         ResetPool()
-        DrawFrame()
+        DrawFrame(true)
 
         local t = math.min(State.Startup.Time / State.Startup.PopDuration, 1)
         local flash = (1 - t) * (1 - t)
@@ -5115,6 +5131,7 @@ local function Render()
 
     if State.Visible < 0.005 then
         HidePicture(State.Logo)
+        HidePicture(State.BackgroundImage)
         -- window hidden: skip everything
         ResetPool()
         -- but notifications/tooltips still show
@@ -5638,6 +5655,24 @@ function Library:CreateWindow(opts)
     end
     local logoSize = tonumber(opts.LogoSize or opts.logoSize)
     if logoSize then State.LogoSize = math.max(16, math.min(48, logoSize)) end
+
+    local backgroundImageSource = opts.BackgroundImage or opts.backgroundImage
+    if backgroundImageSource ~= nil and backgroundImageSource ~= State.BackgroundImageSource then
+        HidePicture(State.BackgroundImage)
+        State.BackgroundImageSource = backgroundImageSource
+        State.BackgroundImage = LoadPicture(backgroundImageSource, "background")
+    end
+
+    local backgroundImageOpacity = tonumber(opts.BackgroundImageOpacity or opts.backgroundImageOpacity)
+    if backgroundImageOpacity ~= nil then
+        if backgroundImageOpacity > 1 then backgroundImageOpacity = backgroundImageOpacity / 100 end
+        State.BackgroundImageOpacity = math.max(0, math.min(1, backgroundImageOpacity))
+    end
+
+    local backgroundImageRounding = tonumber(opts.BackgroundImageRounding or opts.backgroundImageRounding)
+    if backgroundImageRounding ~= nil then
+        State.BackgroundImageRounding = math.max(0, math.min(32, backgroundImageRounding))
+    end
     if opts.MenuKey or opts.menuKey then State.MenuKey = string.lower(tostring(opts.MenuKey or opts.menuKey)) end
     if opts.NoAnim ~= nil or opts.noAnim ~= nil then State.NoAnim = (opts.NoAnim ~= nil and opts.NoAnim or opts.noAnim) and true or false end
     if opts.Background ~= nil or opts.background ~= nil then State.Background = NormalizeBackground(opts.Background or opts.background) end
@@ -5663,7 +5698,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v45-TYPEWRITER-7S"
+Library.Version       = "v46-CUSTOM-IMAGE-BACKGROUND"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5862,7 +5897,7 @@ end)
 
 
 
-Library.Version = "v45-TYPEWRITER-7S"
+Library.Version = "v46-CUSTOM-IMAGE-BACKGROUND"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
