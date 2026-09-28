@@ -458,7 +458,7 @@ end
 
 local function Text(text, x, y, color, size, font, z, alpha, room, center)
     if room then text = TrimText(text, room, size, font) end
-    if text == "" then DrawOrder = DrawOrder + 1; return 0 end
+    if text == "" then DrawOrder = DrawOrder + 1; return end
 
     local o, l = Take("Text")
     local depth = Layer(z + 0.5)
@@ -474,17 +474,6 @@ local function Text(text, x, y, color, size, font, z, alpha, room, center)
 
     local a = (alpha or 1) * FrameAlpha
     if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
-
-    -- Return the renderer's actual measured width when available.
-    -- This keeps spacing after section titles visually consistent even
-    -- when different letters have different glyph widths.
-    local measured = nil
-    pcall(function()
-        if o.TextBounds and o.TextBounds.X then
-            measured = o.TextBounds.X
-        end
-    end)
-    return measured or TextWidth(text, size, font)
 end
 
 local function TextCenter(text, cx, y, color, size, font, z, alpha, room)
@@ -1138,6 +1127,8 @@ local State = {
         Progress = 0,
         RevealProgress = 0,
         RevealDuration = 0.85,
+        ShrinkDuration = 0.42,
+        PopDuration = 0.72,
         StartX = 0, StartY = 0, StartW = 0, StartH = 0,
         TargetX = 0, TargetY = 0, TargetW = 0, TargetH = 0,
     },
@@ -1685,17 +1676,17 @@ local function DrawBackgroundEffect()
         spacing = math.max(12, spacing)
         local offset = (now * 8) % spacing
         for gx = x - spacing + offset, x + w, spacing do
-            Line(gx, y + Layout.TopbarH, gx, y + h, th.AccentA, 11, 1, 0.055 * intensity)
+            Line(gx, y + Layout.TopbarH, gx, y + h, th.AccentA, 11, 1, 0.70 * intensity)
         end
         for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
-            Line(x, gy, x + w, gy, th.AccentA, 11, 1, 0.055 * intensity)
+            Line(x, gy, x + w, gy, th.AccentA, 11, 1, 0.70 * intensity)
         end
     elseif kind == "dots" then
         local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 24
         spacing = math.max(10, spacing)
         for gx = x + 12, x + w - 12, spacing do
             for gy = y + Layout.TopbarH + 12, y + h - 12, spacing do
-                Circle(gx, gy, 1.1, th.AccentA, 11, true, 1, 8, 0.16 * intensity)
+                Circle(gx, gy, 1.1, th.AccentA, 11, true, 1, 8, 0.70 * intensity)
             end
         end
     elseif kind == "scanlines" then
@@ -1703,7 +1694,7 @@ local function DrawBackgroundEffect()
         spacing = math.max(4, spacing)
         local offset = (now * 18) % spacing
         for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
-            Line(x, gy, x + w, gy, th.Text, 11, 1, 0.035 * intensity)
+            Line(x, gy, x + w, gy, th.Text, 11, 1, 0.22 * intensity)
         end
     elseif kind == "particles" then
         local count = math.floor(type(effect) == "table" and tonumber(effect.Count) or 24)
@@ -1713,7 +1704,7 @@ local function DrawBackgroundEffect()
             local speed = 4 + (i % 5) * 1.7
             local py = y + Layout.TopbarH + (((math.cos(i * 47.3) * 0.5 + 0.5) * math.max(1, h - Layout.TopbarH - 18) + now * speed) % math.max(1, h - Layout.TopbarH - 18)) + 6
             local pulse = 0.5 + 0.5 * math.sin(now * 2 + i)
-            Circle(px, py, 1 + pulse * 0.8, th.AccentA, 11, true, 1, 10, (0.16 + pulse * 0.12) * intensity)
+            Circle(px, py, 1 + pulse * 0.8, th.AccentA, 11, true, 1, 10, (0.70 + pulse * 0.25) * intensity)
         end
     elseif kind == "aurora" then
         local bands = type(effect) == "table" and math.floor(tonumber(effect.Bands) or 5) or 5
@@ -1723,7 +1714,7 @@ local function DrawBackgroundEffect()
             local px = x + w * (0.5 + math.sin(phase) * 0.42)
             local py = y + Layout.TopbarH + (h - Layout.TopbarH) * (0.2 + i / bands * 0.65)
             local r = 55 + i * 7
-            Circle(px, py, r, (i % 2 == 0) and th.AccentB or th.AccentA, 11, true, 1, 32, 0.018 * intensity)
+            Circle(px, py, r, (i % 2 == 0) and th.AccentB or th.AccentA, 11, true, 1, 32, 0.10 * intensity)
         end
     end
 end
@@ -1744,10 +1735,11 @@ local function DrawFrame()
 
     DrawBackgroundEffect()
 
-    -- Internal structure only.
-    Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
-         State.X + State.W - Layout.Corner, State.Y + Layout.TopbarH,
-         Color3.new(1, 1, 1), 14, 1, 0.52)
+    -- Integrated premium header trace; no heavy divider.
+    local headerY = State.Y + Layout.TopbarH - 1
+    GradientRect(State.X + 18, headerY,
+                 math.max(40, State.W - 36), 1,
+                 th.AccentA, th.AccentB, 14, 0.22)
 
     -- Keep the vertical separator exactly one sidebar-section padding unit
     -- to the right of the detached section, matching the 10px left inset.
@@ -1779,47 +1771,52 @@ end
 local function DrawStartupFrame()
     local th = State.Theme
     local x, y, w, h = State.X, State.Y, State.W, State.H
+    local st = State.Startup
 
-    GlassSurface(x, y, w, h, rgb(18, 21, 30), 10, Layout.Corner)
+    GlassSurface(x, y, w, h, rgb(14, 16, 23), 10, Layout.Corner)
     DrawGlassBorder(th)
 
-    -- Centered startup title with a short fade/slide-in from the left.
-    local title = State.WindowTitle
-    local titleSize = 16
-    local titleW = TextWidth(title, titleSize, FontBold)
-    local titleProgress = math.min(State.Startup.Time / 0.65, 1)
-    local titleEase = titleProgress * titleProgress * (3 - 2 * titleProgress)
-    local titleOffset = (1 - titleEase) * 28
-    local titleAlpha = titleEase
-    local titleX = x + (w - titleW) / 2 - titleOffset
-    local titleY = TextMidY(y, h, titleSize)
-    Text(title,
-         titleX,
-         titleY,
-         th.Text,
-         titleSize,
-         FontBold,
-         32,
-         titleAlpha,
-         titleW + 2,
-         false)
+    local progress = math.max(0, math.min(1, st.Progress))
+    local intro = math.min(st.Time / 0.55, 1)
+    local ease = intro * intro * (3 - 2 * intro)
 
-    -- Existing loading bar.
-    local barW = math.min(190, math.max(135, w - 38))
-    local barH = 4
-    local barX = x + (w - barW) / 2
-    local barY = y + h - 12
+    -- Minimal premium boot identity.
+    local markW = math.min(34, w * 0.14)
+    local markX = x + 18
+    local markY = y + h / 2 - 18
 
-    Rect(barX, barY, barW, barH, th.Divider, 30, 2, 0.42)
-    if State.Startup.Progress > 0 then
-        Rect(barX, barY,
-             math.max(1, barW * State.Startup.Progress),
-             barH,
-             th.Accent,
-             31,
-             2,
-             0.95)
+    Rect(markX, markY, markW * ease, 2, th.AccentA, 30, 1, 0.95)
+    Rect(markX, markY + 4, math.max(8, markW * 0.55) * ease, 1,
+         th.AccentB, 31, 1, 0.55)
+
+    local title = State.WindowTitle or "SHADOW UI"
+    local titleSize = 15
+    local titleX = markX + markW + 12 - (1 - ease) * 8
+    local titleY = y + h / 2 - 12
+
+    Text(title, titleX, titleY, th.Text, titleSize, FontBold,
+         32, ease, math.max(40, w - (titleX - x) - 24))
+
+    Text("INITIALIZING", titleX, titleY + 18,
+         th.TextMuted, 8, FontMono, 33, 0.72 * ease,
+         math.max(50, w - (titleX - x) - 24))
+
+    local railX = x + 18
+    local railW = math.max(70, w - 36)
+    local railY = y + h - 13
+
+    Rect(railX, railY, railW, 2, th.Divider, 34, 1, 0.30)
+    if progress > 0 then
+        Rect(railX, railY, math.max(1, railW * progress), 2,
+             th.AccentA, 35, 1, 0.92)
+        Circle(railX + railW * progress, railY + 1, 2.2,
+               th.Text, 36, true, 1, 12, 0.92)
     end
+
+    local pct = tostring(math.floor(progress * 100 + 0.5)) .. "%"
+    local pctW = TextWidth(pct, 8, FontMono)
+    Text(pct, x + w - pctW - 18, y + 11,
+         th.TextMuted, 8, FontMono, 37, 0.72, pctW + 2)
 end
 
 local function TickStartup(dt)
@@ -1831,23 +1828,40 @@ local function TickStartup(dt)
         local t = math.min(st.Time / st.Duration, 1)
         st.Progress = 1 - (1 - t) * (1 - t)
         if t >= 1 then
-            st.Phase = "pop"
+            st.Phase = "shrink"
             st.Time = 0
             st.Progress = 1
         end
         return
     end
 
-    if st.Phase == "pop" then
-        -- Expand continuously from the exact compact loading frame.
-        local t = math.min(st.Time / 1.60, 1)
-        local eased = StartupEase(t)
+    if st.Phase == "shrink" then
+        local t = math.min(st.Time / st.ShrinkDuration, 1)
+        local eased = t * t * (3 - 2 * t)
+        local minW, minH = 10, 3
+        State.W = st.StartW + (minW - st.StartW) * eased
+        State.H = st.StartH + (minH - st.StartH) * eased
+        State.X = st.StartX + (st.StartW - State.W) / 2
+        State.Y = st.StartY + (st.StartH - State.H) / 2
+        if t >= 1 then
+            State.W, State.H = minW, minH
+            State.X = st.StartX + (st.StartW - minW) / 2
+            State.Y = st.StartY + (st.StartH - minH) / 2
+            st.Phase = "pop"
+            st.Time = 0
+        end
+        return
+    end
 
-        State.W = st.StartW + (st.TargetW - st.StartW) * eased
-        State.H = st.StartH + (st.TargetH - st.StartH) * eased
+    if st.Phase == "pop" then
+        local t = math.min(st.Time / st.PopDuration, 1)
+        local c1, c3 = 1.32, 2.32
+        local eased = 1 + c3 * ((t - 1) ^ 3) + c1 * ((t - 1) ^ 2)
+        local minW, minH = 10, 3
+        State.W = minW + (st.TargetW - minW) * eased
+        State.H = minH + (st.TargetH - minH) * eased
         State.X = st.TargetX + (st.TargetW - State.W) / 2
         State.Y = st.TargetY + (st.TargetH - State.H) / 2
-
         if t >= 1 then
             State.X, State.Y = st.TargetX, st.TargetY
             State.W, State.H = st.TargetW, st.TargetH
@@ -1859,7 +1873,6 @@ local function TickStartup(dt)
     end
 
     if st.Phase == "reveal" then
-        st.Time = st.Time + dt
         local t = math.min(st.Time / st.RevealDuration, 1)
         st.RevealProgress = t * t * (3 - 2 * t)
         if t >= 1 then
@@ -1909,24 +1922,29 @@ local TitleButtons = {
 local function DrawTitleBar(title, subtitle)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
-    -- centered window title
+
     local titleSize = 15
     local titleW = TextWidth(title, titleSize, FontBold)
     local titleX = State.X + (State.W - titleW) / 2
     local titleY = TextMidY(State.Y, Layout.TopbarH, titleSize)
-    local subtitleText = subtitle or ""
-    local titleOffsetY = subtitleText ~= "" and -4 or 0
-    Text(title, titleX, titleY + titleOffsetY,
-         th.Text, titleSize, FontBold, 33, 1,
-         titleW + 2)
-    if subtitleText ~= "" then
-        local subSize = 10
-        local subW = TextWidth(subtitleText, subSize, FontSystem)
-        Text(subtitleText, State.X + (State.W - subW) / 2, titleY + 13,
-             th.TextDim, subSize, FontSystem, 33, 0.72, subW + 2)
+
+    Text(title, titleX, titleY, th.Text, titleSize, FontBold, 33, 0.96, titleW + 2)
+
+    -- Soft left-to-right shimmer across the centered title.
+    if not State.NoAnim and titleW > 4 then
+        local phase = (os.clock() % 2.65) / 2.65
+        local shimmerCenter = titleX + phase * (titleW + 34) - 17
+        local offsets = {-10, -6, -3, 0, 3, 6, 10}
+        local alphas = {0.03, 0.07, 0.14, 0.36, 0.14, 0.07, 0.03}
+        for i = 1, #offsets do
+            local gx = shimmerCenter + offsets[i]
+            if gx >= titleX and gx <= titleX + titleW then
+                Rect(gx, titleY - 1, 1.25, titleSize + 3,
+                     Color3.new(1, 1, 1), 35 + i, 1, alphas[i])
+            end
+        end
     end
 
-    -- close button (top right)
     local closeSize = TitleButtons.Close.Size
     local closeX = State.X + State.W - closeSize - 8
     local closeY = cy - closeSize / 2
@@ -1936,9 +1954,9 @@ local function DrawTitleBar(title, subtitle)
     local closeHover = MouseIn(closeX, closeY, closeSize, closeSize)
     if closeHover then
         Rect(closeX, closeY, closeSize, closeSize,
-             th.Danger, 30, 6, 0.18)
+             th.Danger, 30, 6, 0.16)
         Stroke(closeX, closeY, closeSize, closeSize,
-               th.Danger, 31, 6, 0.55)
+               th.Danger, 31, 6, 0.5)
     end
 
     local closeColor = closeHover and th.Danger or th.TextDim
@@ -1948,7 +1966,6 @@ local function DrawTitleBar(title, subtitle)
     Bar(cxi - s, cyi - s, cxi + s, cyi + s, 1.6, closeColor, 32, closeHover and 1 or 0.8)
     Bar(cxi + s, cyi - s, cxi - s, cyi + s, 1.6, closeColor, 32, closeHover and 1 or 0.8)
 
-    -- menu keybind button
     local menuSize = TitleButtons.Menu.Size
     local menuX = closeX - menuSize - 6
     local menuY = cy - menuSize / 2
@@ -1958,19 +1975,19 @@ local function DrawTitleBar(title, subtitle)
     local menuHover = MouseIn(menuX, menuY, menuSize, menuSize)
     if menuHover then
         Rect(menuX, menuY, menuSize, menuSize,
-             th.Accent, 30, 6, 0.15)
+             th.Accent, 30, 6, 0.14)
         Stroke(menuX, menuY, menuSize, menuSize,
-               th.Accent, 31, 6, 0.5)
+               th.Accent, 31, 6, 0.46)
     end
 
     local menuColor = menuHover and th.Accent or th.TextDim
     local mxi = menuX + menuSize / 2
     local myi = menuY + menuSize / 2
     for i = -1, 1 do
-        Bar(mxi - 5, myi + i * 4, mxi + 5, myi + i * 4, 1.4, menuColor, 32, menuHover and 1 or 0.75)
+        Bar(mxi - 5, myi + i * 4, mxi + 5, myi + i * 4,
+            1.4, menuColor, 32, menuHover and 1 or 0.72)
     end
 
-    -- clicks
     if closeHover and Input.Click then
         State.Open = false
         Input.Click = false
@@ -1983,7 +2000,6 @@ local function DrawTitleBar(title, subtitle)
         return
     end
 
-    -- drag anywhere in the bar
     local barHover = MouseIn(State.X, State.Y, State.W, Layout.TopbarH)
     if barHover and Input.Click and not State.Drag then
         local exclude =
@@ -2830,22 +2846,8 @@ local function DrawSection(section, x, y, w)
     local arrow = collapse > 0.5 and ">" or "v"
     Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
 
-    -- Render the title first so we can use the width returned by the actual
-    -- text renderer for this frame. This prevents different sections from
-    -- inheriting a previous section's cached title width.
-    local titleX = x + 14
-    section._titleWidth = Text(section.Title, titleX, y, State.Theme.Text, Layout.TitleSize, FontBold,
+    Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, FontBold,
          50, 0.98, math.max(1, w - 14))
-
-    -- Keep exactly 15px of visual space between the end of the title and
-    -- the separator for every section.
-    local titleW = section._titleWidth or 0
-    local lineX = titleX + titleW + 15
-    local lineW = math.max(0, (x + w) - lineX)
-    if lineW > 8 then
-        GradientRect(lineX, y + math.floor(Layout.SectionTitleH * 0.55), lineW, 1,
-                     State.Theme.Divider, State.Theme.Base, 51, 0.72, 32)
-    end
 
     if section.Description and section.Description ~= "" then
         Text(section.Description, x + 14, y + Layout.SectionTitleH,
@@ -4569,6 +4571,7 @@ local function Render()
     TickStartup(State.Delta)
 
     local startupIsLoading = State.Startup.Active and State.Startup.Phase == "loading"
+    local startupIsShrink = State.Startup.Active and State.Startup.Phase == "shrink"
     local startupIsPop = State.Startup.Active and State.Startup.Phase == "pop"
     local startupIsReveal = State.Startup.Active and State.Startup.Phase == "reveal"
 
@@ -4588,12 +4591,31 @@ local function Render()
         return
     end
 
+    if startupIsShrink then
+        Geometry.Recalculate()
+        ResetPool()
+        local radius = math.min(Layout.Corner, math.max(1, State.H / 2))
+        GlassSurface(State.X, State.Y, State.W, State.H, rgb(14, 16, 23), 10, radius)
+        Stroke(State.X, State.Y, State.W, State.H, Color3.new(1, 1, 1), 20, radius, 0.82)
+        Circle(State.X + State.W / 2, State.Y + State.H / 2,
+               math.max(1.5, math.min(4, State.H * 0.18)),
+               State.Theme.AccentA, 31, true, 1, 12, 0.95)
+        HideUnused()
+        return
+    end
+
     if startupIsPop then
         Geometry.Recalculate()
         ResetPool()
-        -- Only the actual window shell is drawn while it expands. No sidebar
-        -- or tab contents are rendered until the window reaches full size.
         DrawFrame()
+
+        local t = math.min(State.Startup.Time / State.Startup.PopDuration, 1)
+        local flash = (1 - t) * (1 - t)
+        if flash > 0.002 then
+            Circle(State.X + State.W / 2, State.Y + State.H / 2,
+                   3 + 8 * t, State.Theme.AccentA,
+                   45, true, 1, 18, 0.55 * flash)
+        end
         HideUnused()
         return
     end
@@ -4860,7 +4882,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v32"
+Library.Version       = "v32-SHRINK-POP-SHIMMER"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5022,7 +5044,7 @@ end)
 
 
 
-Library.Version = "v32"
+Library.Version = "v32-SHRINK-POP-SHIMMER"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
