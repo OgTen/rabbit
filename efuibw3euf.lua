@@ -5026,4 +5026,7 @@ end)
 
 
 
+-- Matcha drops top-level return values from loadstring() executions.
+-- Export through a neutral internal global so external loaders can retrieve the library.
+_G.__UI_LIBRARY_EXPORT = Library
 return Library
