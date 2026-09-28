@@ -1237,6 +1237,7 @@ local State = {
     NoAnim      = false,
     Settings = {
         KeybindOverlay = true,
+        PerformanceOverlay = true,
         BackgroundEffects = true,
         BorderComet = true,
         WindowOpacity = 82,
@@ -2904,6 +2905,8 @@ end
 local WantTooltip
 local DrawKeybindOverlay
 local UpdateKeybindOverlayInput
+local DrawPerformanceOverlay
+local UpdatePerformanceOverlayInput
 
 local ContentCursor = { y = 0 }
 
@@ -4804,6 +4807,7 @@ local function Render()
     State.Delta = math.min(now - State.LastTick, 1 / 20)
     State.LastTick = now
     State.Frame = State.Frame + 1
+    TickPerformanceOverlay(State.Delta)
 
     -- input capture dispatcher
     UpdateCapture()
@@ -4884,7 +4888,9 @@ local function Render()
         TickNotifications(State.Delta)
         DrawNotifications()
         UpdateKeybindOverlayInput()
+        UpdatePerformanceOverlayInput()
         DrawKeybindOverlay()
+        DrawPerformanceOverlay()
         HideUnused()
         return
     end
@@ -4915,6 +4921,7 @@ local function Render()
 
     -- The keybind HUD is its own persistent input surface.
     UpdateKeybindOverlayInput()
+    UpdatePerformanceOverlayInput()
 
     -- Do not interact with partially revealed controls. They become live once
     -- the reveal reaches the final frame.
@@ -4929,6 +4936,7 @@ local function Render()
     DrawNotifications()
     DrawTooltip()
     DrawKeybindOverlay()
+    DrawPerformanceOverlay()
 
     -- HUD boxes
     DrawHUDBoxes()
@@ -5007,22 +5015,37 @@ local function GetKeybindOverlayGeometry()
     local vp = Camera.ViewportSize
     local list = CollectKeybinds()
     local maxRows = math.min(#list, 8)
-    local rowH = 28
-    local headerH = 38
-    local footerH = #list > 8 and 22 or 10
-    local w = 248
+    local rowH = 27
+    local headerH = 34
+    local footerH = #list > 8 and 20 or 8
+
+    -- Size the whole HUD from the longest visible label and key. Every key
+    -- chip starts on the same X position so shorter rows line up cleanly.
+    local labelSize = 11
+    local keySize = 12
+    local longestLabelW = TextWidth("No hotkeys assigned", labelSize, FontBold)
+    local longestKeyW = TextWidth("NONE", keySize, FontBold)
+    for i = 1, math.min(#list, 8) do
+        local entry = list[i]
+        local title = tostring(entry.Title or "Hotkey")
+        local value = string.upper(tostring(entry.Row and entry.Row.Value or "NONE"))
+        longestLabelW = math.max(longestLabelW, TextWidth(title, labelSize, FontBold))
+        longestKeyW = math.max(longestKeyW, TextWidth(value, keySize, FontBold))
+    end
+
+    local pillW = math.max(36, longestKeyW + 18)
+    local leftPad, gap, rightPad = 12, 14, 12
+    local w = math.max(142, leftPad + longestLabelW + gap + pillW + rightPad)
     local h = headerH + math.max(1, maxRows) * rowH + footerH
     local x = KeybindHUD.X
     if x == nil then x = math.max(10, vp.X - w - 18) end
     x = math.max(6, math.min(x, math.max(6, vp.X - w - 6)))
     local y = math.max(6, math.min(KeybindHUD.Y, math.max(6, vp.Y - h - 6)))
-    return x, y, w, h, headerH, rowH, list
+    return x, y, w, h, headerH, rowH, list, longestLabelW, pillW
 end
 
 UpdateKeybindOverlayInput = function()
     if State.Settings and State.Settings.KeybindOverlay == false then return end
-    -- The overlay remains visible while the menu is hidden, but it is only
-    -- interactive/draggable while the main Shadow UI window is open.
     if not State.Open or State.Visible < 0.50 then
         KeybindHUD.Dragging = false
         return
@@ -5054,7 +5077,8 @@ end
 DrawKeybindOverlay = function()
     if State.Settings and State.Settings.KeybindOverlay == false then return end
     local th = State.Theme
-    local x, y, w, h, headerH, rowH, list = GetKeybindOverlayGeometry()
+    local x, y, w, h, headerH, rowH, list, labelColumnW, pillW =
+        GetKeybindOverlayGeometry()
 
     local previousAlpha = FrameAlpha
     FrameAlpha = 1
@@ -5062,41 +5086,38 @@ DrawKeybindOverlay = function()
     Rect(x, y, w, h, rgb(13, 16, 23), 331, 9, 0.96)
     Stroke(x, y, w, h, th.Accent, 332, 9, 0.88)
 
-    Text("KEYBINDS", x + 14, y + 10, th.Text, 12, FontBold, 334, 1)
-    if State.Open and State.Visible >= 0.50 then
-        Text("drag", x + w - 36, y + 12, th.TextDim, 8, FontSystem, 334, 0.55)
-    end
-
-    Line(x + 12, y + headerH - 1, x + w - 12, y + headerH - 1,
-         th.Accent, 334, 1, 0.14)
+    local header = "HOTKEYS"
+    local headerSize = 12
+    local headerW = TextWidth(header, headerSize, FontBold)
+    Text(header, x + (w - headerW) / 2,
+         TextMidY(y, headerH, headerSize),
+         th.Text, headerSize, FontBold, 334, 1, headerW + 2)
 
     local rowY = y + headerH
     if #list == 0 then
-        Text("No keybinds assigned", x + 14, rowY + 8,
-             th.TextDim, 10, FontSystem, 335, 0.82)
+        local empty = "No hotkeys assigned"
+        local emptyW = TextWidth(empty, 11, FontBold)
+        Text(empty, x + (w - emptyW) / 2,
+             TextMidY(rowY, rowH, 11),
+             th.TextDim, 11, FontBold, 335, 0.82, emptyW + 2)
         FrameAlpha = previousAlpha
         return
     end
 
+    local labelX = x + 12
+    local pillX = labelX + labelColumnW + 14
     for i = 1, math.min(#list, 8) do
         local entry = list[i]
-        local title = entry.Title or "Keybind"
+        local title = tostring(entry.Title or "Hotkey")
         local value = string.upper(tostring(entry.Row and entry.Row.Value or "NONE"))
+        local labelSize = 11
         local keySize = 12
         local valueW = TextWidth(value, keySize, FontBold)
-        local pillW = math.max(36, valueW + 18)
         local pillH = 20
-        local pillX = x + w - pillW - 12
         local pillY = rowY + (rowH - pillH) / 2
 
-        if i > 1 then
-            Line(x + 14, rowY, x + w - 14, rowY,
-                 th.Accent, 335, 1, 0.08)
-        end
-
-        local titleMax = math.max(54, pillX - (x + 14) - 8)
-        Text(title, x + 14, rowY + 7, th.Text, 10, FontSystem,
-             336, 0.94, titleMax)
+        Text(title, labelX, TextMidY(rowY, rowH, labelSize),
+             th.Text, labelSize, FontBold, 336, 0.96, labelColumnW + 2)
 
         Rect(pillX, pillY, pillW, pillH, th.Accent, 337, 5, 0.13)
         Stroke(pillX, pillY, pillW, pillH, th.Accent, 338, 5, 0.42)
@@ -5109,8 +5130,127 @@ DrawKeybindOverlay = function()
     end
 
     if #list > 8 then
-        Text("+" .. tostring(#list - 8) .. " more keybinds",
-             x + 14, rowY + 5, th.TextDim, 8, FontSystem, 339, 0.68)
+        local more = "+" .. tostring(#list - 8) .. " more"
+        local moreW = TextWidth(more, 8, FontBold)
+        Text(more, x + (w - moreW) / 2, rowY + 4,
+             th.TextDim, 8, FontBold, 339, 0.68, moreW + 2)
+    end
+
+    FrameAlpha = previousAlpha
+end
+
+-- ============================================================================
+--  PERFORMANCE OVERLAY
+-- ============================================================================
+
+local PerformanceHUD = {
+    X = 18,
+    Y = 18,
+    Dragging = false,
+    DragOffsetX = 0,
+    DragOffsetY = 0,
+    FPS = 60,
+    FrameMS = 16.7,
+    AccumTime = 0,
+    AccumFrames = 0,
+}
+
+local function TickPerformanceOverlay(dt)
+    dt = math.max(0.0001, tonumber(dt) or (1 / 60))
+    PerformanceHUD.AccumTime = PerformanceHUD.AccumTime + dt
+    PerformanceHUD.AccumFrames = PerformanceHUD.AccumFrames + 1
+    if PerformanceHUD.AccumTime >= 0.35 then
+        PerformanceHUD.FPS = PerformanceHUD.AccumFrames / PerformanceHUD.AccumTime
+        PerformanceHUD.FrameMS = (PerformanceHUD.AccumTime / PerformanceHUD.AccumFrames) * 1000
+        PerformanceHUD.AccumTime = 0
+        PerformanceHUD.AccumFrames = 0
+    end
+end
+
+local function GetPerformanceRows()
+    local vp = Camera.ViewportSize
+    return {
+        {"FPS", tostring(math.floor(PerformanceHUD.FPS + 0.5))},
+        {"FRAME", string.format("%.1f ms", PerformanceHUD.FrameMS)},
+        {"WINDOW", tostring(math.floor(State.W)) .. " x " .. tostring(math.floor(State.H))},
+        {"VIEWPORT", tostring(math.floor(vp.X)) .. " x " .. tostring(math.floor(vp.Y))},
+    }
+end
+
+local function GetPerformanceOverlayGeometry()
+    local vp = Camera.ViewportSize
+    local rows = GetPerformanceRows()
+    local labelSize, valueSize = 10, 10
+    local labelW, valueW = 0, 0
+    for _, row in ipairs(rows) do
+        labelW = math.max(labelW, TextWidth(row[1], labelSize, FontBold))
+        valueW = math.max(valueW, TextWidth(row[2], valueSize, FontBold))
+    end
+    local headerH, rowH = 34, 25
+    local w = math.max(158, 12 + labelW + 18 + valueW + 12)
+    local h = headerH + #rows * rowH + 8
+    local x = math.max(6, math.min(PerformanceHUD.X, math.max(6, vp.X - w - 6)))
+    local y = math.max(6, math.min(PerformanceHUD.Y, math.max(6, vp.Y - h - 6)))
+    return x, y, w, h, headerH, rowH, rows, labelW, valueW
+end
+
+UpdatePerformanceOverlayInput = function()
+    if State.Settings and State.Settings.PerformanceOverlay == false then return end
+    if not State.Open or State.Visible < 0.50 then
+        PerformanceHUD.Dragging = false
+        return
+    end
+    local x, y, w, h = GetPerformanceOverlayGeometry()
+    local hover = MouseIn(x, y, w, h)
+
+    if PerformanceHUD.Dragging then
+        if Input.Down then
+            PerformanceHUD.X = Input.X - PerformanceHUD.DragOffsetX
+            PerformanceHUD.Y = Input.Y - PerformanceHUD.DragOffsetY
+        else
+            PerformanceHUD.Dragging = false
+        end
+        Input.Click = false
+        return
+    end
+
+    if hover and Input.Click then
+        PerformanceHUD.Dragging = true
+        PerformanceHUD.DragOffsetX = Input.X - x
+        PerformanceHUD.DragOffsetY = Input.Y - y
+        PerformanceHUD.X = x
+        PerformanceHUD.Y = y
+        Input.Click = false
+    end
+end
+
+DrawPerformanceOverlay = function()
+    if State.Settings and State.Settings.PerformanceOverlay == false then return end
+    local th = State.Theme
+    local x, y, w, h, headerH, rowH, rows, labelW =
+        GetPerformanceOverlayGeometry()
+
+    local previousAlpha = FrameAlpha
+    FrameAlpha = 1
+
+    Rect(x, y, w, h, rgb(13, 16, 23), 341, 9, 0.96)
+    Stroke(x, y, w, h, th.Accent, 342, 9, 0.88)
+
+    local header = "PERFORMANCE"
+    local headerSize = 12
+    local headerW = TextWidth(header, headerSize, FontBold)
+    Text(header, x + (w - headerW) / 2,
+         TextMidY(y, headerH, headerSize),
+         th.Text, headerSize, FontBold, 344, 1, headerW + 2)
+
+    local rowY = y + headerH
+    local valueX = x + 12 + labelW + 18
+    for _, row in ipairs(rows) do
+        Text(row[1], x + 12, TextMidY(rowY, rowH, 10),
+             th.TextDim, 10, FontBold, 345, 0.86, labelW + 2)
+        Text(row[2], valueX, TextMidY(rowY, rowH, 10),
+             th.Text, 10, FontBold, 346, 0.98, w - (valueX - x) - 12)
+        rowY = rowY + rowH
     end
 
     FrameAlpha = previousAlpha
@@ -5170,6 +5310,12 @@ local function EnsureGlobalSettingsTab(library)
         Description = "Show the draggable keybind list even when the window is hidden.",
         Default = State.Settings.KeybindOverlay,
         Callback = function(v) State.Settings.KeybindOverlay = v end,
+    })
+    Controls.Toggle(hud, {
+        Title = "Performance overlay",
+        Description = "Show live FPS, frame time and interface dimensions.",
+        Default = State.Settings.PerformanceOverlay,
+        Callback = function(v) State.Settings.PerformanceOverlay = v end,
     })
     Controls.Slider(hud, {
         Title = "Window opacity",
@@ -5247,6 +5393,19 @@ function Library:CreateWindow(opts)
     if opts.MenuKey or opts.menuKey then State.MenuKey = string.lower(tostring(opts.MenuKey or opts.menuKey)) end
     if opts.NoAnim ~= nil or opts.noAnim ~= nil then State.NoAnim = (opts.NoAnim ~= nil and opts.NoAnim or opts.noAnim) and true or false end
     if opts.Background ~= nil or opts.background ~= nil then State.Background = NormalizeBackground(opts.Background or opts.background) end
+    local hotkeyOverlayOption = opts.KeybindOverlay
+    if hotkeyOverlayOption == nil then hotkeyOverlayOption = opts.keybindOverlay end
+    if hotkeyOverlayOption == nil then hotkeyOverlayOption = opts.HotkeyOverlay end
+    if hotkeyOverlayOption == nil then hotkeyOverlayOption = opts.hotkeyOverlay end
+    if hotkeyOverlayOption ~= nil then
+        State.Settings.KeybindOverlay = hotkeyOverlayOption and true or false
+    end
+
+    local performanceOverlayOption = opts.PerformanceOverlay
+    if performanceOverlayOption == nil then performanceOverlayOption = opts.performanceOverlay end
+    if performanceOverlayOption ~= nil then
+        State.Settings.PerformanceOverlay = performanceOverlayOption and true or false
+    end
     local themeOption = opts.Theme or opts.theme
     if themeOption ~= nil then
         if type(themeOption) == "string" then
@@ -5269,7 +5428,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v39-RESIZE-BOUNDARY-FIX"
+Library.Version       = "v40-HOTKEYS-PERFORMANCE"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5343,6 +5502,14 @@ end
 
 function Library:CloseKeybinds()
     State.Settings.KeybindOverlay = false
+end
+
+function Library:OpenPerformance()
+    State.Settings.PerformanceOverlay = true
+end
+
+function Library:ClosePerformance()
+    State.Settings.PerformanceOverlay = false
 end
 
 -- hotkey --------------------------------------------------------------------
@@ -5455,7 +5622,7 @@ end)
 
 
 
-Library.Version = "v39-RESIZE-BOUNDARY-FIX"
+Library.Version = "v40-HOTKEYS-PERFORMANCE"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
