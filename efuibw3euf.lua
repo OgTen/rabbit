@@ -3041,6 +3041,8 @@ end)
 --  INLINE HELPER  --  build a row of controls that share the horizontal space
 -- ============================================================================
 
+local WantTooltip
+
 local function LayoutInline(row, x, y, w)
     -- Distribute widths according to weights (default: equal)
     local n = #row.Cells
@@ -3081,10 +3083,47 @@ local function LayoutInline(row, x, y, w)
     return maxH
 end
 
+-- Inline input uses the exact geometry cached by LayoutInline so the
+-- clickable area always matches the controls that were drawn.
+local function InputInline(row, x, y, w)
+    local n = #row.Cells
+    if n == 0 then return 0 end
+
+    -- Refresh the same column geometry if input runs before this frame's draw.
+    local weights = row.Weights or {}
+    local total = 0
+    for i = 1, n do total = total + (weights[i] or 1) end
+    if total <= 0 then total = n end
+
+    local pad = Layout.RowColumnGap
+    local availW = w - (n - 1) * pad
+    local cx = x
+    local maxH = 0
+
+    for i = 1, n do
+        local frac = (weights[i] or 1) / total
+        local cw = math.floor(availW * frac)
+        local ctrl = row.Cells[i]
+        ctrl._inlineX = cx
+        ctrl._inlineY = y
+        ctrl._inlineW = cw
+        maxH = math.max(maxH, ctrl.Height or Layout.RowHeight)
+        cx = cx + cw + pad
+    end
+
+    for i = 1, n do
+        local ctrl = row.Cells[i]
+        if not ctrl.Hidden and ctrl.Enabled ~= false and ctrl.Input then
+            ctrl:Input(ctrl._inlineX, ctrl._inlineY, ctrl._inlineW)
+        end
+    end
+
+    return maxH
+end
+
 --  CONTENT  --  generic render pass: walks a tab's rows and draws them
 -- ============================================================================
 
-local WantTooltip
 local DrawKeybindOverlay
 local UpdateKeybindOverlayInput
 local DrawPerformanceOverlay
@@ -5840,7 +5879,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.5-DROPDOWN-OVERLAY-MULTI"
+Library.Version       = "v46.5.1-INLINE-INPUT-FIX"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6039,7 +6078,7 @@ end)
 
 
 
-Library.Version = "v46.5-DROPDOWN-OVERLAY-MULTI"
+Library.Version = "v46.5.1-INLINE-INPUT-FIX"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
