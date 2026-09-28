@@ -2886,7 +2886,7 @@ local function MeasureSection(section, w)
     local collapse = Clamp(section._collapse or 0, 0, 1)
     local visiblePanelH = fullPanelH * (1 - collapse)
 
-    return headerH + math.max(0, visiblePanelH)
+    return headerH + visiblePanelH
 end
 
 local function DrawSection(section, x, y, w)
@@ -2937,10 +2937,8 @@ local function DrawSection(section, x, y, w)
 
     if collapse >= 0.985 then return end
 
-    if visiblePanelH > 0 then
-        FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
-        Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
-    end
+    FrostedSurface(x, panelY, w, visiblePanelH, State.Theme.Panel, 40, Layout.SectionCorner)
+    Stroke(x, panelY, w, visiblePanelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
 
     local innerX = x + Layout.SectionPadX
     local innerY = panelY + Layout.SectionPadY
@@ -3985,12 +3983,89 @@ local function GetContentRevealUnits(tab)
     return units
 end
 
+local function BuildContentLayout(tab, viewportTop, halfW)
+    local items = {}
+    local leftY = viewportTop
+    local rightY = viewportTop
+    local sectionIndex = 0
+    local revealIndex = 0
+    local i = 1
+
+    while i <= #(tab.Rows or {}) do
+        local row = tab.Rows[i]
+        if row.Hidden then
+            i = i + 1
+        elseif IsSection(row) then
+            sectionIndex = sectionIndex + 1
+            revealIndex = revealIndex + 1
+
+            local h = MeasureSection(row, halfW)
+            local useLeft = (sectionIndex % 2) == 1
+            local x = useLeft and Geometry.InnerX or (Geometry.InnerX + halfW + Layout.SectionColumnGap)
+            local y = useLeft and leftY or rightY
+
+            row._layoutX = x
+            row._layoutY = y
+            row._layoutW = halfW
+            row._layoutH = h
+
+            items[#items + 1] = {
+                row = row,
+                x = x,
+                y = y,
+                w = halfW,
+                h = h,
+                reveal = revealIndex,
+                kind = "section",
+            }
+
+            if useLeft then
+                leftY = y + h + Layout.SectionGap
+            else
+                rightY = y + h + Layout.SectionGap
+            end
+            i = i + 1
+        else
+            -- A non-section row is full width. It starts after whichever
+            -- section column currently extends farther down.
+            local y = math.max(leftY, rightY)
+            local h
+            if getmetatable(row) == InlineRow then
+                h = 0
+                for _, ctrl in ipairs(row.Cells or {}) do
+                    if not ctrl.Hidden then
+                        h = math.max(h, ctrl.Height or Layout.RowHeight)
+                    end
+                end
+                h = h > 0 and h or Layout.RowHeight
+            else
+                h = row.Height or Layout.RowHeight
+            end
+
+            revealIndex = revealIndex + 1
+            items[#items + 1] = {
+                row = row,
+                x = Geometry.InnerX,
+                y = y,
+                w = Geometry.InnerW,
+                h = h,
+                reveal = revealIndex,
+                kind = "row",
+            }
+
+            local nextY = y + h + Layout.RowGapY
+            leftY = nextY
+            rightY = nextY
+            i = i + 1
+        end
+    end
+
+    return items, math.max(leftY, rightY) - viewportTop
+end
+
 local function DrawContent()
     local tab = State.Tabs[State.ActiveIndex]
     if not tab then return end
-
-    local revealUnits = StartupRevealCount(GetContentRevealUnits(tab), State.Startup.RevealProgress)
-    local revealIndex = 0
 
     local titleY = Geometry.ContentY + 6
     local title = tab.Name
@@ -4016,106 +4091,26 @@ local function DrawContent()
     local viewportTop = Geometry.ContentY + headerH + Layout.ContentPadY
     local viewportH = Geometry.ContentH - headerH - Layout.ContentPadY * 2
     local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
-    local x1 = Geometry.InnerX
-    local x2 = Geometry.InnerX + halfW + Layout.SectionColumnGap
 
-    -- Sections use independent columns. This is intentionally a masonry-style
-    -- layout: collapsing a section only moves the sections below it in the
-    -- same column, instead of reserving the height of the taller neighbour.
-    local leftY = 0
-    local rightY = 0
-
-    local function measureNormal(row)
-        if getmetatable(row) == InlineRow then
-            local h = 0
-            for _, ctrl in ipairs(row.Cells or {}) do
-                if not ctrl.Hidden then
-                    h = math.max(h, ctrl.Height or Layout.RowHeight)
-                end
-            end
-            return h > 0 and h or Layout.RowHeight
-        end
-        return row.Height or Layout.RowHeight
-    end
-
-    local sectionIndex = 0
-    local i = 1
-    while i <= #(tab.Rows or {}) do
-        local row = tab.Rows[i]
-        if row.Hidden then
-            i = i + 1
-        elseif IsSection(row) then
-            sectionIndex = sectionIndex + 1
-            local h = MeasureSection(row, halfW) + Layout.SectionGap
-            if (sectionIndex % 2) == 1 then
-                leftY = leftY + h
-            else
-                rightY = rightY + h
-            end
-            i = i + 1
-        else
-            local rowH = measureNormal(row) + Layout.RowGapY
-            local base = math.max(leftY, rightY)
-            leftY = base + rowH
-            rightY = base + rowH
-            i = i + 1
-        end
-    end
-
-    tab.MaxScroll = math.max(0, math.max(leftY, rightY) - viewportH)
+    local items, contentH = BuildContentLayout(tab, viewportTop, halfW)
+    tab.MaxScroll = math.max(0, contentH - viewportH)
     TickScroll(tab, State.Delta)
     HandleWheel(tab)
 
-    leftY = viewportTop - tab.Scroll
-    rightY = viewportTop - tab.Scroll
+    local clipTop = viewportTop
+    local clipBottom = Geometry.ContentY + Geometry.ContentH
+    for _, item in ipairs(items) do
+        local row = item.row
+        local y = item.y - tab.Scroll
+        local h = item.h
+        local revealThis = item.reveal <= StartupRevealCount(#items, State.Startup.RevealProgress)
 
-    local sectionIndex2 = 0
-    i = 1
-    while i <= #(tab.Rows or {}) do
-        local row = tab.Rows[i]
-        if not row.Hidden then
-            if IsSection(row) then
-                sectionIndex2 = sectionIndex2 + 1
-                revealIndex = revealIndex + 1
-                local revealThis = revealIndex <= revealUnits
-                local isLeft = (sectionIndex2 % 2) == 1
-                local sectionY = isLeft and leftY or rightY
-                local sectionX = isLeft and x1 or x2
-                local sectionH = MeasureSection(row, halfW)
-                local clipTop = viewportTop
-                local clipBottom = Geometry.ContentY + Geometry.ContentH
-
-                if revealThis and (not State.Startup.Active or
-                    (sectionY + sectionH >= clipTop and sectionY <= clipBottom)) then
-                    DrawSection(row, sectionX, sectionY, halfW)
-                end
-
-                if isLeft then
-                    leftY = leftY + sectionH + Layout.SectionGap
-                else
-                    rightY = rightY + sectionH + Layout.SectionGap
-                end
-                i = i + 1
+        if revealThis and (not State.Startup.Active or (y + h >= clipTop and y <= clipBottom)) then
+            if item.kind == "section" then
+                DrawSection(row, item.x, y, item.w)
             else
-                local base = math.max(leftY, rightY)
-                local h = measureNormal(row)
-                revealIndex = revealIndex + 1
-                local revealThis = revealIndex <= revealUnits
-                local clipTop = viewportTop
-                local clipBottom = Geometry.ContentY + Geometry.ContentH
-
-                if revealThis and (not State.Startup.Active or
-                    (base + h >= clipTop and base <= clipBottom)) then
-                    h = DrawRow(row, Geometry.InnerX, base, Geometry.InnerW) or h
-                end
-
-                base = base + h + Layout.RowGapY
-                leftY = base
-                rightY = base
-                i = i + 1
+                DrawRow(row, item.x, y, item.w)
             end
-        else
-            i = i + 1
         end
     end
 
@@ -4138,58 +4133,19 @@ local function InputContent()
     local headerH = (tab.Subtitle and 42 or 26)
     local viewportTop = Geometry.ContentY + headerH + Layout.ContentPadY
     local halfW = math.floor((Geometry.InnerW - Layout.SectionColumnGap) / 2)
-    local leftY = viewportTop - tab.Scroll
-    local rightY = viewportTop - tab.Scroll
+    local items = BuildContentLayout(tab, viewportTop, halfW)
 
-    local function measureNormal(row)
-        if getmetatable(row) == InlineRow then
-            local h = 0
-            for _, ctrl in ipairs(row.Cells or {}) do
-                if not ctrl.Hidden then
-                    h = math.max(h, ctrl.Height or Layout.RowHeight)
-                end
-            end
-            return h > 0 and h or Layout.RowHeight
-        end
-        return row.Height or Layout.RowHeight
-    end
+    for _, item in ipairs(items) do
+        local row = item.row
+        local y = item.y - tab.Scroll
+        local h = item.h
 
-    local sectionIndex3 = 0
-    local i = 1
-    while i <= #(tab.Rows or {}) do
-        local row = tab.Rows[i]
-        if not row.Hidden then
-            if IsSection(row) then
-                sectionIndex3 = sectionIndex3 + 1
-                local isLeft = (sectionIndex3 % 2) == 1
-                local sectionY = isLeft and leftY or rightY
-                -- InputSection reads the section's cached layout coordinates,
-                -- which are set by DrawSection above. Keep the layout columns
-                -- synchronized here for the current frame.
-                row._layoutX = isLeft and Geometry.InnerX or
-                    (Geometry.InnerX + halfW + Layout.SectionColumnGap)
-                row._layoutY = sectionY
-                row._layoutW = halfW
+        if y + h >= viewportTop and y <= Geometry.ContentY + Geometry.ContentH then
+            if item.kind == "section" then
                 InputSection(row)
-
-                local h = MeasureSection(row, halfW) + Layout.SectionGap
-                if isLeft then
-                    leftY = leftY + h
-                else
-                    rightY = rightY + h
-                end
-                i = i + 1
             else
-                local base = math.max(leftY, rightY)
-                InputRow(row, Geometry.InnerX, base, Geometry.InnerW)
-                local h = measureNormal(row) + Layout.RowGapY
-                base = base + h
-                leftY = base
-                rightY = base
-                i = i + 1
+                InputRow(row, item.x, y, item.w)
             end
-        else
-            i = i + 1
         end
     end
 
@@ -5106,7 +5062,7 @@ end)
 
 
 
-Library.Version = "v23"
+Library.Version = "v21"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
