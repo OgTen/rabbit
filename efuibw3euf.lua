@@ -4748,19 +4748,18 @@ local function DrawHUDBoxes()
 
     for _, box in ipairs(HUDBoxes) do
         if box.Visible then
-            local lineH = 16
-            local headerH = 22
-            local padX = 10
-            local padY = 8
-            local contentH = math.max(1, #box.Lines) * lineH
-            local naturalH = headerH + contentH + padY
+            -- Keep custom overlays visually identical to HOTKEYS/PERFORMANCE.
+            local lineH = 25
+            local headerH = 34
+            local padX = 12
+            local contentPadY = 4
+            local naturalH = headerH + math.max(1, #box.Lines) * lineH + 8
             local totalH = box.H and math.max(headerH + 8, box.H) or naturalH
 
             local vp = Camera.ViewportSize
             box.X = math.max(6, math.min(box.X, math.max(6, vp.X - box.W - 6)))
             box.Y = math.max(6, math.min(box.Y, math.max(6, vp.Y - totalH - 6)))
 
-            -- drag
             if box._drag then
                 if Input.Down then
                     box.X = Input.X - box._drag.gx
@@ -4773,46 +4772,42 @@ local function DrawHUDBoxes()
             local hover = MouseIn(box.X, box.Y, box.W, totalH)
             box._hover = Approach(box._hover, hover and 1 or 0, 16, State.Delta)
 
-            if hover and Input.Click then
+            if hover and Input.Click and State.Open and State.Visible >= 0.50 then
                 box._drag = { gx = Input.X - box.X, gy = Input.Y - box.Y }
                 Input.Click = false
             end
 
-            -- shadow
-            Rect(box.X + 2, box.Y + 3, box.W, totalH,
-                 Color3.new(0, 0, 0), 220, 8, 0.28)
+            -- Exact same dark-glass body and accent border as the built-ins.
+            Rect(box.X, box.Y, box.W, totalH, rgb(13, 16, 23), 351, 9, 0.96)
+            Stroke(box.X, box.Y, box.W, totalH, th.Accent, 352, 9, 0.88)
 
-            -- body
-            Rect(box.X, box.Y, box.W, totalH, th.Base, 221, 8, 0.94)
-            Stroke(box.X, box.Y, box.W, totalH, th.Accent, 222, 8,
-                   0.4 + 0.3 * box._hover)
+            -- Same centered, slightly raised header typography.
+            local header = string.upper(tostring(box.Title or "OVERLAY"))
+            local headerSize = 12
+            local headerW = TextWidth(header, headerSize, FontBold)
+            Text(header,
+                 box.X + (box.W - headerW) / 2,
+                 TextMidY(box.Y, headerH, headerSize) - 2,
+                 th.Text, headerSize, FontBold, 354, 1, headerW + 2)
 
-            -- header gradient bar
-            Rect(box.X, box.Y, box.W, headerH, th.Panel, 223, 8, 0.85)
-            GradientRect(box.X + 1, box.Y + 1, box.W - 2, 1.5,
-                         th.AccentA, th.AccentB, 224, 0.6)
+            -- Same header/content separator.
+            Line(box.X + 10, box.Y + headerH - 1,
+                 box.X + box.W - 10, box.Y + headerH - 1,
+                 th.Accent, 354, 1, 0.22)
 
-            local titleSize = 12
-            local titleW = TextWidth(box.Title, titleSize, FontBold)
-            local titleX = box.X + math.max(padX, (box.W - titleW) / 2)
-            Text(box.Title, titleX, TextMidY(box.Y, headerH, titleSize) - 1,
-                 th.Text, titleSize, FontBold, 225, 0.95,
-                 math.max(1, box.W - padX * 2))
-
-            -- divider
-            Line(box.X + 6, box.Y + headerH,
-                 box.X + box.W - 6, box.Y + headerH,
-                 th.Divider, 224, 1, 0.7)
-
-            -- lines
+            -- Content uses the same bold, compact overlay typography.
             for i, line in ipairs(box.Lines) do
-                local ly = box.Y + headerH + padY + (i - 1) * lineH
-                if ly + 12 <= box.Y + totalH - 5 then
-                    Text(line.Text, box.X + padX, ly,
-                         line.Color or th.TextDim, 11, FontSystem, 226, 0.9,
+                local rowY = box.Y + headerH + contentPadY + (i - 1) * lineH
+                if rowY + 12 <= box.Y + totalH - 5 then
+                    Text(line.Text, box.X + padX,
+                         TextMidY(rowY, lineH, 10),
+                         line.Color or th.Text,
+                         10, FontBold, 355, 0.96,
                          box.W - padX * 2)
                 end
             end
+        else
+            box._drag = nil
         end
     end
 end
@@ -5491,7 +5486,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v42-CREATE-OVERLAY"
+Library.Version       = "v42.1-UNIFIED-OVERLAYS"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5690,7 +5685,7 @@ end)
 
 
 
-Library.Version = "v42-CREATE-OVERLAY"
+Library.Version = "v42.1-UNIFIED-OVERLAYS"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
