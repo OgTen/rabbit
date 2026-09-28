@@ -571,6 +571,22 @@ for name, data in pairs(Icons) do
 end
 
 local function DrawIconByName(name, x, y, size, color, z, alpha, thickness)
+
+    if string.lower(tostring(name or "")) == "settings" or string.lower(tostring(name or "")) == "gear" then
+        local cx, cy = x + size / 2, y + size / 2
+        local r = math.max(3, size * 0.28)
+        Circle(cx, cy, r, color, z, false, 1.5, 18, alpha)
+        Circle(cx, cy, math.max(1.2, r * 0.34), color, z + 1, false, 1.2, 14, alpha)
+        for i = 0, 7 do
+            local a = i * math.pi / 4
+            local x1 = cx + math.cos(a) * (r + 1)
+            local y1 = cy + math.sin(a) * (r + 1)
+            local x2 = cx + math.cos(a) * (r + 3)
+            local y2 = cy + math.sin(a) * (r + 3)
+            Bar(x1, y1, x2, y2, 1.5, color, z, alpha)
+        end
+        return true
+    end
     if not name then return false end
     local data = IconIndex[string.lower(name)]
     if not data then return false end
@@ -1133,8 +1149,16 @@ local State = {
         TargetX = 0, TargetY = 0, TargetW = 0, TargetH = 0,
     },
 
-    -- global animation toggle
+    -- global animation / settings
     NoAnim      = false,
+    Settings = {
+        KeybindOverlay = true,
+        BackgroundEffects = true,
+        BorderComet = true,
+        Notifications = true,
+        Tooltips = true,
+        CompactOverlay = false,
+    },
 
     -- window identity / appearance
     WindowTitle    = "Window",
@@ -1271,6 +1295,7 @@ function Tab.new(parent, opts)
         Name     = opts.Title or "Tab",
         Icon     = opts.Icon,
         Hidden   = opts.Hidden or false,
+        IsSettings = opts.IsSettings or false,
 
         -- layout values (recomputed each frame)
         RowY     = 0,
@@ -1645,6 +1670,10 @@ local function DrawGlassBorder(th)
     local distance = (os.clock() * 92) % perimeter
     local accent = th.AccentA
 
+    if State.Settings and State.Settings.BorderComet == false then
+        return
+    end
+
     local trailCount = 9
     local trailLength = 34
     for i = trailCount, 1, -1 do
@@ -1661,6 +1690,7 @@ local function DrawGlassBorder(th)
 end
 
 local function DrawBackgroundEffect()
+    if State.Settings and State.Settings.BackgroundEffects == false then return end
     local effect = State.Background
     local kind = type(effect) == "table" and effect.Type or effect
     if kind == "none" then return end
@@ -2096,6 +2126,10 @@ local function DrawTabRail()
     local tabGap = Layout.TabGap
     local iconSize = Layout.TabIcon
     local visibleTabs = StartupRevealCount(#State.Tabs, State.Startup.RevealProgress)
+    local settingsIndex = nil
+    for i, tab in ipairs(State.Tabs) do
+        if tab.IsSettings then settingsIndex = i break end
+    end
 
     for i, tab in ipairs(State.Tabs) do
         if i > visibleTabs then break end
@@ -2114,7 +2148,7 @@ local function DrawTabRail()
             local w = narrowTabW + (wideTabW - narrowTabW) * openAmt
 
             local x = sectionX + (sectionW - w) * 0.5
-            local y = rowY
+            local y = tab.IsSettings and (sectionY + sectionH - rowH - 11) or rowY
             local yOffset = (rowH - tabRowH) * 0.5
             y = y + yOffset
 
@@ -2200,7 +2234,9 @@ local function DrawTabRail()
                 Input.Click = false
             end
 
-            rowY = rowY + tabRowH + tabGap
+            if not tab.IsSettings then
+                rowY = rowY + tabRowH + tabGap
+            end
         end
     end
 
@@ -4248,6 +4284,7 @@ local function TickNotifications(dt)
 end
 
 local function DrawNotifications()
+    if State.Settings and State.Settings.Notifications == false then return end
     local th = State.Theme
     local vp = Camera.ViewportSize
     local notW = 280
@@ -4754,6 +4791,7 @@ local function GetKeybindOverlayGeometry()
 end
 
 UpdateKeybindOverlayInput = function()
+    if State.Settings and State.Settings.KeybindOverlay == false then return end
     local x, y, w, h = GetKeybindOverlayGeometry()
     local hover = MouseIn(x, y, w, h)
 
@@ -4779,17 +4817,15 @@ UpdateKeybindOverlayInput = function()
 end
 
 DrawKeybindOverlay = function()
+    if State.Settings and State.Settings.KeybindOverlay == false then return end
     local th = State.Theme
     local x, y, w, h, headerH, rowH, list = GetKeybindOverlayGeometry()
 
     local previousAlpha = FrameAlpha
     FrameAlpha = 1
 
-    Rect(x + 3, y + 5, w, h, Color3.new(0, 0, 0), 330, 9, 0.38)
     Rect(x, y, w, h, rgb(13, 16, 23), 331, 9, 0.96)
-    Stroke(x, y, w, h, Color3.new(1, 1, 1), 332, 9, 0.16)
-    GradientRect(x + 12, y + 1, w - 24, 1,
-                 th.AccentA, th.AccentB, 333, 0.72)
+    Stroke(x, y, w, h, Color3.new(1, 1, 1), 332, 9, 0.88)
 
     Text("KEYBINDS", x + 14, y + 10, th.Text, 12, FontBold, 334, 1)
     Text("drag", x + w - 36, y + 12, th.TextDim, 8, FontSystem, 334, 0.55)
@@ -4818,10 +4854,8 @@ DrawKeybindOverlay = function()
                  Color3.new(1, 1, 1), 335, 1, 0.055)
         end
 
-        Rect(x + 13, rowY + 9, 2, 10, th.AccentA, 336, 1, 0.72)
-
-        local titleMax = math.max(54, pillX - (x + 23) - 8)
-        Text(title, x + 23, rowY + 7, th.Text, 10, FontSystem,
+        local titleMax = math.max(54, pillX - (x + 14) - 8)
+        Text(title, x + 14, rowY + 7, th.Text, 10, FontSystem,
              336, 0.94, titleMax)
 
         Rect(pillX, rowY + 6, pillW, 17, th.Accent, 337, 4, 0.10)
@@ -4838,6 +4872,100 @@ DrawKeybindOverlay = function()
     end
 
     FrameAlpha = previousAlpha
+end
+
+
+-- ============================================================================
+--  GLOBAL SETTINGS TAB
+-- ============================================================================
+
+local function EnsureGlobalSettingsTab(library)
+    for _, tab in ipairs(State.Tabs) do
+        if tab.IsSettings then return tab end
+    end
+
+    local tab = Tab.new(library, {
+        Title = "Settings",
+        Icon = "settings",
+        IsSettings = true,
+    })
+
+    local appearance = Section.new(tab, "Appearance", "Global Shadow UI appearance", {})
+    Controls.Dropdown(appearance, {
+        Title = "Theme",
+        Options = {"Midnight", "Obsidian", "Burgundy"},
+        Default = (State.Theme and State.Theme.Name) or "Midnight",
+        Callback = function(value) SetThemeByName(value) end,
+    })
+    Controls.Dropdown(appearance, {
+        Title = "Background",
+        Options = {"none", "grid", "dots", "scanlines", "particles", "aurora"},
+        Default = type(State.Background) == "table" and (State.Background.Type or "none") or State.Background,
+        Callback = function(value) State.Background = NormalizeBackground(value) end,
+    })
+    Controls.Toggle(appearance, {
+        Title = "Background effects",
+        Description = "Master switch for the animated window background.",
+        Default = State.Settings.BackgroundEffects,
+        Callback = function(v) State.Settings.BackgroundEffects = v end,
+    })
+    Controls.Toggle(appearance, {
+        Title = "Border animation",
+        Description = "Animated comet travelling around the main border.",
+        Default = State.Settings.BorderComet,
+        Callback = function(v) State.Settings.BorderComet = v end,
+    })
+    Controls.Toggle(appearance, {
+        Title = "Reduce animations",
+        Description = "Disables most UI tweening and motion.",
+        Default = State.NoAnim,
+        Callback = function(v) State.NoAnim = v end,
+    })
+
+    local hud = Section.new(tab, "Interface", "Global overlays and feedback", {})
+    Controls.Toggle(hud, {
+        Title = "Keybind overlay",
+        Description = "Show the draggable keybind list even when the window is hidden.",
+        Default = State.Settings.KeybindOverlay,
+        Callback = function(v) State.Settings.KeybindOverlay = v end,
+    })
+    Controls.Toggle(hud, {
+        Title = "Notifications",
+        Description = "Allow Shadow UI notification toasts.",
+        Default = State.Settings.Notifications,
+        Callback = function(v) State.Settings.Notifications = v end,
+    })
+    Controls.Toggle(hud, {
+        Title = "Tooltips",
+        Description = "Show contextual hover tooltips.",
+        Default = State.Settings.Tooltips,
+        Callback = function(v) State.Settings.Tooltips = v end,
+    })
+
+    local behavior = Section.new(tab, "Behavior", "Window and navigation preferences", {})
+    Controls.Toggle(behavior, {
+        Title = "Keep sidebar open",
+        Description = "Pins the sidebar in its expanded state.",
+        Default = State.RailPinned,
+        Callback = function(v) State.RailPinned = v end,
+    })
+    Controls.Button(behavior, {
+        Title = "Reset overlay position",
+        Callback = function()
+            KeybindHUD.X = nil
+            KeybindHUD.Y = 18
+        end,
+    })
+    Controls.Button(behavior, {
+        Title = "Reset window position",
+        Callback = function()
+            local vp = Camera.ViewportSize
+            State.X = math.floor((vp.X - State.W) / 2)
+            State.Y = math.floor((vp.Y - State.H) / 2)
+        end,
+    })
+
+    return tab
 end
 
 -- ============================================================================
@@ -4882,12 +5010,14 @@ function Library:CreateWindow(opts)
         end
     end
 
+    EnsureGlobalSettingsTab(self)
+
     StartStartup({
         Duration = opts.StartupDuration or opts.startupDuration or opts.Duration or opts.duration or 5.0,
     })
     return self
 end
-Library.Version       = "v33-CLEAN-HEADER-OVERLAY"
+Library.Version       = "v34-GLOBAL-SETTINGS"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -4896,10 +5026,34 @@ Library.Tabs           = {}
 -- tabs ----------------------------------------------------------------------
 function Library:AddTab(opts)
     opts = opts or {}
+    local settingsTab, settingsIndex = nil, nil
+    for i, existing in ipairs(State.Tabs) do
+        if existing.IsSettings then
+            settingsTab, settingsIndex = existing, i
+            break
+        end
+    end
+
+    if settingsTab then
+        table.remove(State.Tabs, settingsIndex)
+        if self.Tabs then
+            for i, existing in ipairs(self.Tabs) do
+                if existing == settingsTab then table.remove(self.Tabs, i) break end
+            end
+        end
+    end
+
     local tab = Tab.new(self, opts)
+
+    if settingsTab then
+        State.Tabs[#State.Tabs + 1] = settingsTab
+        self.Tabs[#self.Tabs + 1] = settingsTab
+    end
+
     EnsureWindowFitsTabs()
     if opts.Select then
-        State.ActiveIndex = #State.Tabs
+        local _, idx = FindTab(tab.Name)
+        if idx then State.ActiveIndex = idx end
     end
     return tab
 end
@@ -4932,11 +5086,11 @@ function Library:SetBackground(effect)
 end
 
 function Library:OpenKeybinds()
-    -- Kept for API compatibility. The keybind overlay is always visible.
+    State.Settings.KeybindOverlay = true
 end
 
 function Library:CloseKeybinds()
-    -- Kept for API compatibility. The keybind overlay is always visible.
+    State.Settings.KeybindOverlay = false
 end
 
 -- hotkey --------------------------------------------------------------------
@@ -5049,7 +5203,7 @@ end)
 
 
 
-Library.Version = "v33-CLEAN-HEADER-OVERLAY"
+Library.Version = "v34-GLOBAL-SETTINGS"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
