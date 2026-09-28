@@ -1943,31 +1943,44 @@ local function DrawGlassBorder(th)
         return
     end
 
-    -- One colored comet travels around the border. The trail uses the same
-    -- color as the head and fades smoothly toward its tail.
+    -- Two mirrored comets travel in opposite directions around the same
+    -- perimeter. Their brighter heads, soft halos and longer trails make the
+    -- motion readable without turning the border into a heavy effect.
     local straightW = math.max(0, w - radius * 2)
     local straightH = math.max(0, h - radius * 2)
     local perimeter = 2 * straightW + 2 * straightH + 2 * math.pi * radius
-    local distance = (os.clock() * 92) % perimeter
-    local accent = th.AccentA
+    local distance = (os.clock() * 96) % perimeter
 
     if State.Settings and State.Settings.BorderComet == false then
         return
     end
 
-    local trailCount = 9
-    local trailLength = 34
-    for i = trailCount, 1, -1 do
-        local t = i / trailCount
-        local trailDistance = distance - trailLength * t
-        local trailX, trailY = GlassBorderPoint(trailDistance, x, y, w, h, radius)
-        local trailAlpha = 0.05 + (1 - t) * 0.40
-        local trailSize = 1.0 + (1 - t) * 1.5
-        Circle(trailX, trailY, trailSize, accent, 21 + i, true, 1, 12, trailAlpha)
+    local function DrawComet(headDistance, direction, accent, zBase)
+        local trailCount = 12
+        local trailLength = 48
+
+        for i = trailCount, 1, -1 do
+            local t = i / trailCount
+            local trailDistance = headDistance - direction * trailLength * t
+            local tx, ty = GlassBorderPoint(trailDistance, x, y, w, h, radius)
+            local strength = 1 - t
+            local trailAlpha = 0.07 + strength * 0.54
+            local trailSize = 1.15 + strength * 1.75
+            Circle(tx, ty, trailSize, accent,
+                   zBase + i, true, 1, 14, trailAlpha)
+        end
+
+        local hx, hy = GlassBorderPoint(headDistance, x, y, w, h, radius)
+        Circle(hx, hy, 6.0, accent, zBase + 20, true, 1, 20, 0.13)
+        Circle(hx, hy, 3.5, accent, zBase + 21, true, 1, 18, 1)
+        Circle(hx, hy, 1.6, Color3.new(1, 1, 1),
+               zBase + 22, true, 1, 14, 0.88)
     end
 
-    local headX, headY = GlassBorderPoint(distance, x, y, w, h, radius)
-    Circle(headX, headY, 2.8, accent, 32, true, 1, 16, 1)
+    -- The second head mirrors the first by traversing the perimeter in the
+    -- opposite direction from the same phase.
+    DrawComet(distance, 1, th.AccentA, 21)
+    DrawComet((-distance) % perimeter, -1, th.AccentB or th.AccentA, 55)
 end
 
 local function DrawBackgroundEffect()
@@ -3706,6 +3719,35 @@ Register("Dropdown", function(parent, opts)
         return string.sub(text, 1, lo) .. dots
     end
 
+    function self:_BuildFieldGeometry(x, y, w, h)
+        local fieldY = y + 2
+        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
+
+        -- Preserve enough room for the title, but let the selector itself size
+        -- to the selected text. Multi-select can grow to a fixed cap, after
+        -- which the displayed selection is ellipsized.
+        local labelReserve = math.min(w * 0.48, labelW + 18)
+        local availableW = math.max(70, w - labelReserve)
+        local maxFieldW = math.min(240, availableW)
+
+        local display = self:_DisplayValue()
+        local textW = TextWidth(display, Layout.TextSize, FontBold)
+        local desiredW = textW + 34 -- compact left room + arrow/right padding
+        local fieldW = Clamp(desiredW, 70, maxFieldW)
+
+        -- Right-align compact selectors so all dropdown arrows stay aligned.
+        local fieldX = x + w - fieldW
+
+        return {
+            X = fieldX,
+            Y = fieldY,
+            W = fieldW,
+            H = h,
+            Display = display,
+            LabelRoom = math.max(1, fieldX - x - 8),
+        }
+    end
+
     function self:_BuildPopupGeometry(fieldX, fieldY, fieldW, h)
         local rowH = 22
         local maxVisible = 8
@@ -3728,7 +3770,7 @@ Register("Dropdown", function(parent, opts)
 
         local scrollbarRoom = (#self.Options > maxVisible) and 17 or 8
         local desiredW = widest + 18 + scrollbarRoom
-        local popupW = Clamp(desiredW, 70, maxPopupW)
+        local popupW = Clamp(math.max(fieldW, desiredW), 70, maxPopupW)
 
         -- Prefer aligning the popup's right edge with the selector field. This
         -- keeps a compact popup visually attached to the selected-value chip.
@@ -3757,10 +3799,8 @@ Register("Dropdown", function(parent, opts)
         local th = State.Theme
         local h = Layout.DropdownH
 
-        local fieldY = y + 2
-        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
-        local fieldX = x + math.min(w * 0.48, labelW + 18)
-        local fieldW = math.max(70, w - (fieldX - x))
+        local fg = self:_BuildFieldGeometry(x, y, w, h)
+        local fieldX, fieldY, fieldW = fg.X, fg.Y, fg.W
 
         local hover = MouseIn(fieldX, fieldY, fieldW, h) and self.Enabled
         TickAnim(self, hover, self._open, State.Delta)
@@ -3773,14 +3813,14 @@ Register("Dropdown", function(parent, opts)
             Text(self.Title, x, fieldY + (h - Layout.TextSize) / 2,
                  th.Text, Layout.TextSize, FontSystem,
                  54, self.Enabled and 0.92 or 0.4,
-                 math.max(1, fieldX - x - 8))
+                 fg.LabelRoom)
         end
 
         -- Compact selected-value spacing: keep only a small gap before the
         -- arrow instead of the older oversized right padding.
         local valueRightPad = 22
         local valueMaxW = math.max(1, fieldW - valueRightPad - 6)
-        local valueText = FitText(self:_DisplayValue(), valueMaxW, Layout.TextSize, FontBold)
+        local valueText = FitText(fg.Display, valueMaxW, Layout.TextSize, FontBold)
         local valueW = TextWidth(valueText, Layout.TextSize, FontBold)
         Text(valueText,
              fieldX + fieldW - valueRightPad - valueW,
@@ -3883,10 +3923,8 @@ Register("Dropdown", function(parent, opts)
     function self:Input(x, y, w)
         if not self.Enabled then return end
         local h = Layout.DropdownH
-        local fieldY = y + 2
-        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
-        local fieldX = x + math.min(w * 0.48, labelW + 18)
-        local fieldW = math.max(70, w - (fieldX - x))
+        local fg = self:_BuildFieldGeometry(x, y, w, h)
+        local fieldX, fieldY, fieldW = fg.X, fg.Y, fg.W
 
         -- Popup option clicks use the canonical on-screen popup rectangle.
         if self._open and self._popupGeom then
@@ -4889,6 +4927,10 @@ local function Notify(opts)
         Life       = 0,
         TargetLife = math.max(0.5, tonumber(opts.Duration or opts.duration) or 4),
         Done       = false,
+        -- Separate Drawing.Image holder using the same CreateWindow logo
+        -- source, allowing several notifications and the titlebar logo to
+        -- render simultaneously.
+        Logo       = State.LogoSource and LoadPicture(State.LogoSource, "notification_logo") or nil,
     }, Notification)
 
     State.Notifications[#State.Notifications + 1] = entry
@@ -4903,31 +4945,33 @@ local function TickNotifications(dt)
         local n = list[i]
         n.Life = n.Life + dt
 
-        local remaining = n.TargetLife - n.Life
         local targetFade, targetSlide
+        local fadeDuration = 0.42
 
-        -- Quicker premium entrance, calmer exit.
+        -- The lifetime/progress bar now reaches exactly zero while the card
+        -- is still fully visible. Only AFTER that does the toast fade away.
         if n.Life < 0.22 then
             local t = n.Life / 0.22
             targetFade = t
             targetSlide = (1 - t) * 34
-        elseif remaining < 0.45 then
-            local t = math.max(0, remaining / 0.45)
-            targetFade = t
-            targetSlide = (1 - t) * 26
-        else
+        elseif n.Life <= n.TargetLife then
             targetFade = 1
             targetSlide = 0
+        else
+            local fadeT = Clamp((n.Life - n.TargetLife) / fadeDuration, 0, 1)
+            targetFade = 1 - fadeT
+            targetSlide = fadeT * 26
         end
 
-        n.Fade  = Approach(n.Fade, targetFade, 20, dt)
+        n.Fade  = Approach(n.Fade, targetFade, 22, dt)
         n.Slide = Approach(n.Slide, targetSlide, 20, dt)
 
-        if n.Life >= n.TargetLife and n.Fade < 0.02 then
+        if n.Life >= n.TargetLife + fadeDuration and n.Fade < 0.02 then
             n.Done = true
         end
 
         if n.Done then
+            HidePicture(n.Logo)
             table.remove(list, i)
         else
             i = i + 1
@@ -4970,36 +5014,27 @@ local function DrawNotifications()
             local accent = th[colors.accent] or th.Accent
             local typeLabel = colors.label or "INFO"
 
-            -- Deep floating shadow.
-            Rect(nx + 3, ny + 5, notW, notH,
-                 Color3.new(0, 0, 0), 370, 12, 0.34 * a)
-
-            -- Main glass card.
+            -- Clean floating card: no external shadow and no decorative
+            -- accent rails. Type colour + progress bar carry the status.
             Rect(nx, ny, notW, notH,
                  rgb(13, 16, 23), 371, 12, 0.97 * a)
             Stroke(nx, ny, notW, notH,
                    th.Stroke, 372, 12, 0.72 * a)
 
-            -- Strong status rail and subtle accent cap.
-            Rect(nx, ny + 9, 4, notH - 18,
-                 accent, 373, 2, 0.98 * a)
-            Rect(nx + 14, ny + 1, notW - 28, 1,
-                 accent, 373, 0, 0.30 * a)
+            -- Use the same image source supplied to CreateWindow.logo.
+            local logoSize = 38
+            local logoX = nx + 15
+            local logoY = ny + (notH - logoSize) / 2
+            local drewLogo = DrawPicture(n.Logo, logoX, logoY,
+                                         logoSize, logoSize,
+                                         Layer(376), a, 8)
+            if not drewLogo then
+                -- Small neutral fallback while an async remote logo loads.
+                Circle(logoX + logoSize / 2, logoY + logoSize / 2,
+                       4, accent, 376, true, 1, 14, 0.85 * a)
+            end
 
-            -- Icon tile.
-            local iconBox = 38
-            local iconX = nx + 16
-            local iconY = ny + (notH - iconBox) / 2
-            Rect(iconX, iconY, iconBox, iconBox,
-                 accent, 374, 9, 0.12 * a)
-            Stroke(iconX, iconY, iconBox, iconBox,
-                   accent, 375, 9, 0.38 * a)
-            DrawIconByName(colors.icon,
-                           iconX + (iconBox - 18) / 2,
-                           iconY + (iconBox - 18) / 2,
-                           18, accent, 376, 0.98 * a)
-
-            local textX = iconX + iconBox + 12
+            local textX = logoX + logoSize + 12
             local rightPad = 14
             local textW = notW - (textX - nx) - rightPad
 
@@ -5206,6 +5241,12 @@ end
 local function DrawHUDBoxes()
     local th = State.Theme
 
+    -- Custom overlays are independent HUD surfaces. Do not inherit the main
+    -- window's close/open alpha, otherwise they become transparent when the
+    -- main window is hidden.
+    local previousAlpha = FrameAlpha
+    FrameAlpha = 1
+
     for _, box in ipairs(HUDBoxes) do
         if box.Visible then
             -- Keep custom overlays visually identical to HOTKEYS/PERFORMANCE.
@@ -5270,6 +5311,8 @@ local function DrawHUDBoxes()
             box._drag = nil
         end
     end
+
+    FrameAlpha = previousAlpha
 end
 
 local function HUDBox_Remove(box)
@@ -5970,7 +6013,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.6-HUD-DROPDOWN-NOTIFICATIONS"
+Library.Version       = "v46.7-HUD-DROPDOWN-NOTIFY-COMETS"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6169,7 +6212,7 @@ end)
 
 
 
-Library.Version = "v46.6-HUD-DROPDOWN-NOTIFICATIONS"
+Library.Version = "v46.7-HUD-DROPDOWN-NOTIFY-COMETS"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
