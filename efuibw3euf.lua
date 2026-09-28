@@ -4870,7 +4870,6 @@ end
 -- ============================================================================
 
 local Library = {}
-Library.Version = "v18"
 
 -- CreateWindow is the public constructor used by showcase/user scripts.
 -- The startup animation is part of the same window.
@@ -5077,9 +5076,20 @@ end)
 
 
 -- Matcha-friendly public exports.
--- Keep both a neutral named export and the legacy UI export so the library
--- works whether Matcha preserves the loadstring return value or not.
+-- Keep the library available through the chunk return value and through
+-- Matcha's shared/global environments. Do not use setfenv/getfenv.
 UI = Library
 RabbitUI = Library
+
+if type(getgenv) == "function" then
+    local env = getgenv()
+    env.UI = Library
+    env.RabbitUI = Library
+end
+
+if type(shared) == "table" then
+    shared.UI = Library
+    shared.RabbitUI = Library
+end
 
 return Library
