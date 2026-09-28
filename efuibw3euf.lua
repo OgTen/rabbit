@@ -1,6 +1,6 @@
 --[[
 ================================================================================
-  SHADOW UI  ::  v1.0
+  UI LIBRARY  ::  v1.0
   ------------------------------------------------------------------------------
   A modern, resizable, inline-capable Drawing-based UI library for Matcha.
   Designed from scratch with reference to REM UI and INS-UI, but:
@@ -8,11 +8,10 @@
     - Corner-drag resize handle
     - True in-line row layout
     - Scroll-wheel + scrollbar
-    - Full config persistence
     - Icon font rendered from line segments (no image data)
   ------------------------------------------------------------------------------
   Load:  loadstring(game:HttpGet("<your gist raw url>"))()
-  Use:   local UI = ShadowUI
+  Use:   local UI = Library
 ================================================================================
 --]]
 
@@ -21,7 +20,6 @@ local Players       = game:GetService("Players")
 local LocalPlayer   = Players.LocalPlayer
 local Mouse         = LocalPlayer:GetMouse()
 local Camera        = workspace.CurrentCamera
-local HttpService   = game:GetService("HttpService")
 
 local Fonts         = Drawing.Fonts
 local FontSystem    = Fonts.System
@@ -114,6 +112,33 @@ local Themes = {
         Success     = rgb(140, 220, 160),
     },
 }
+
+-- ============================================================================
+--  BACKGROUND EFFECTS / WINDOW APPEARANCE
+-- ============================================================================
+
+local BackgroundNames = {
+    none = true,
+    grid = true,
+    dots = true,
+    scanlines = true,
+    particles = true,
+    aurora = true,
+}
+
+local function NormalizeBackground(value)
+    if type(value) == "table" then
+        local kind = string.lower(tostring(value.Type or value.type or value.Name or value.name or "none"))
+        local out = {}
+        for k, v in pairs(value) do out[k] = v end
+        out.Type = BackgroundNames[kind] and kind or "none"
+        return out
+    end
+    local kind = string.lower(tostring(value or "none"))
+    if not BackgroundNames[kind] then kind = "none" end
+    return kind
+end
+
 
 -- ============================================================================
 --  LAYOUT CONSTANTS  --  all spatial values live here so they can be tweaked
@@ -1114,11 +1139,14 @@ local State = {
     -- global animation toggle
     NoAnim      = false,
 
+    -- window identity / appearance
+    WindowTitle    = "Window",
+    WindowSubtitle = "",
+    Background     = "none",
+    BackgroundOptions = {},
+
     -- hotkeys
     MenuKey     = "p",
-
-    -- config
-    ConfigFile  = "ShadowUI_config.json",
 
     -- theme
     Theme       = Themes[1],
@@ -1127,7 +1155,40 @@ local State = {
 
     -- notifications queue
     Notifications = {},
+    KeybindManagerOpen = false,
+    ContextMenu = nil,
 }
+
+
+local function ApplyThemeOptions(themeOption)
+    if type(themeOption) == "string" then
+        for i, th in ipairs(Themes) do
+            if string.lower(th.Name) == string.lower(themeOption) then
+                State.Theme = th
+                State.ThemeIndex = i
+                return
+            end
+        end
+        return
+    end
+    if type(themeOption) ~= "table" then return end
+    local source = State.Theme or Themes[1]
+    local merged = {}
+    for k, v in pairs(source) do merged[k] = v end
+    local aliases = {
+        accent = "Accent", accenta = "AccentA", accentb = "AccentB",
+        based = "Base", base = "Base", panel = "Panel", panelhi = "PanelHi",
+        stroke = "Stroke", divider = "Divider", text = "Text", textdim = "TextDim",
+        textmuted = "TextMuted", accentdim = "AccentDim", track = "Track",
+        trackfill = "TrackFill", danger = "Danger", warning = "Warning", success = "Success",
+    }
+    for k, v in pairs(themeOption) do
+        local key = aliases[string.lower(tostring(k))]
+        if key and typeof(v) == "Color3" then merged[key] = v end
+    end
+    State.Theme = merged
+    State.ThemeIndex = 0
+end
 
 -- ============================================================================
 --  PART 2 COMPLETE
@@ -1227,7 +1288,7 @@ function Tab.new(parent, opts)
         Dirty    = true,
     }, Tab)
     State.Tabs[#State.Tabs + 1] = self
-    -- also mirror on the parent table so ShadowUI.Tabs stays in sync
+    -- also mirror on the parent table so Library.Tabs stays in sync
     parent.Tabs = parent.Tabs or {}
     parent.Tabs[#parent.Tabs + 1] = self
 
@@ -1247,11 +1308,13 @@ end
 local Section = {}
 Section.__index = Section
 
-function Section.new(tab, title, description)
+function Section.new(tab, title, description, opts)
+    opts = opts or {}
     local self = setmetatable({
         Parent      = tab,
         Title       = title or "Section",
         Description = description or "",
+        Collapsed   = opts.Collapsed and true or false,
         Rows        = {},
         HeaderH     = Layout.SectionH,
         _layoutX    = 0,
@@ -1595,6 +1658,65 @@ local function DrawGlassBorder(th)
     Circle(headX, headY, 2.8, accent, 32, true, 1, 16, 1)
 end
 
+local function DrawBackgroundEffect()
+    local effect = State.Background
+    local kind = type(effect) == "table" and effect.Type or effect
+    if kind == "none" then return end
+
+    local th = State.Theme
+    local x, y, w, h = State.X, State.Y, State.W, State.H
+    local now = os.clock()
+    local intensity = type(effect) == "table" and tonumber(effect.Intensity) or nil
+    intensity = math.max(0, math.min(1, intensity or 1))
+
+    if kind == "grid" then
+        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 32
+        spacing = math.max(12, spacing)
+        local offset = (now * 8) % spacing
+        for gx = x - spacing + offset, x + w, spacing do
+            Line(gx, y + Layout.TopbarH, gx, y + h, th.AccentA, 11, 1, 0.055 * intensity)
+        end
+        for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
+            Line(x, gy, x + w, gy, th.AccentA, 11, 1, 0.055 * intensity)
+        end
+    elseif kind == "dots" then
+        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 24
+        spacing = math.max(10, spacing)
+        for gx = x + 12, x + w - 12, spacing do
+            for gy = y + Layout.TopbarH + 12, y + h - 12, spacing do
+                Circle(gx, gy, 1.1, th.AccentA, 11, true, 1, 8, 0.16 * intensity)
+            end
+        end
+    elseif kind == "scanlines" then
+        local spacing = type(effect) == "table" and tonumber(effect.Spacing) or 7
+        spacing = math.max(4, spacing)
+        local offset = (now * 18) % spacing
+        for gy = y + Layout.TopbarH - spacing + offset, y + h, spacing do
+            Line(x, gy, x + w, gy, th.Text, 11, 1, 0.035 * intensity)
+        end
+    elseif kind == "particles" then
+        local count = math.floor(type(effect) == "table" and tonumber(effect.Count) or 24)
+        count = math.max(4, math.min(60, count))
+        for i = 1, count do
+            local px = x + ((math.sin(i * 91.7) * 0.5 + 0.5) * math.max(1, w - 24)) + 12
+            local speed = 4 + (i % 5) * 1.7
+            local py = y + Layout.TopbarH + (((math.cos(i * 47.3) * 0.5 + 0.5) * math.max(1, h - Layout.TopbarH - 18) + now * speed) % math.max(1, h - Layout.TopbarH - 18)) + 6
+            local pulse = 0.5 + 0.5 * math.sin(now * 2 + i)
+            Circle(px, py, 1 + pulse * 0.8, th.AccentA, 11, true, 1, 10, (0.16 + pulse * 0.12) * intensity)
+        end
+    elseif kind == "aurora" then
+        local bands = type(effect) == "table" and math.floor(tonumber(effect.Bands) or 5) or 5
+        bands = math.max(2, math.min(8, bands))
+        for i = 1, bands do
+            local phase = now * (0.25 + i * 0.025) + i * 1.7
+            local px = x + w * (0.5 + math.sin(phase) * 0.42)
+            local py = y + Layout.TopbarH + (h - Layout.TopbarH) * (0.2 + i / bands * 0.65)
+            local r = 55 + i * 7
+            Circle(px, py, r, (i % 2 == 0) and th.AccentB or th.AccentA, 11, true, 1, 32, 0.018 * intensity)
+        end
+    end
+end
+
 local function DrawFrame()
     local th = State.Theme
 
@@ -1608,6 +1730,8 @@ local function DrawFrame()
     Rect(State.X + Layout.Corner, State.Y + 1,
          math.max(1, State.W - Layout.Corner * 2), 1,
          Color3.new(1, 1, 1), 12, 0, 0.12)
+
+    DrawBackgroundEffect()
 
     -- Internal structure only.
     Line(State.X + Layout.Corner, State.Y + Layout.TopbarH,
@@ -1657,7 +1781,7 @@ local function DrawStartupFrame()
     DrawGlassBorder(th)
 
     -- Centered startup title with a short fade/slide-in from the left.
-    local title = "SHADOW UI"
+    local title = State.WindowTitle
     local titleSize = 16
     local titleW = TextWidth(title, titleSize, FontBold)
     local titleProgress = math.min(State.Startup.Time / 0.65, 1)
@@ -1779,7 +1903,7 @@ local TitleButtons = {
     Menu   = { Size = 22, X = 0, Y = 0 },
 }
 
-local function DrawTitleBar(title)
+local function DrawTitleBar(title, subtitle)
     local th = State.Theme
     local cy = State.Y + Layout.TopbarH / 2
     -- centered window title
@@ -1787,9 +1911,17 @@ local function DrawTitleBar(title)
     local titleW = TextWidth(title, titleSize, FontBold)
     local titleX = State.X + (State.W - titleW) / 2
     local titleY = TextMidY(State.Y, Layout.TopbarH, titleSize)
-    Text(title, titleX, titleY,
+    local subtitleText = subtitle or ""
+    local titleOffsetY = subtitleText ~= "" and -4 or 0
+    Text(title, titleX, titleY + titleOffsetY,
          th.Text, titleSize, FontBold, 33, 1,
          titleW + 2)
+    if subtitleText ~= "" then
+        local subSize = 10
+        local subW = TextWidth(subtitleText, subSize, FontSystem)
+        Text(subtitleText, State.X + (State.W - subW) / 2, titleY + 13,
+             th.TextDim, subSize, FontSystem, 33, 0.72, subW + 2)
+    end
 
     -- close button (top right)
     local closeSize = TitleButtons.Close.Size
@@ -1819,6 +1951,27 @@ local function DrawTitleBar(title)
     local menuY = cy - menuSize / 2
     TitleButtons.Menu.X = menuX
     TitleButtons.Menu.Y = menuY
+
+    -- keybind manager button
+    local keySize = 22
+    local keyX = menuX - keySize - 6
+    local keyY = cy - keySize / 2
+    local keyHover = MouseIn(keyX, keyY, keySize, keySize)
+    if keyHover then
+        Rect(keyX, keyY, keySize, keySize, th.Accent, 30, 6, 0.15)
+        Stroke(keyX, keyY, keySize, keySize, th.Accent, 31, 6, 0.5)
+    end
+    local keyColor = keyHover and th.Accent or th.TextDim
+    local kx, ky = keyX + 7, keyY + 7
+    Circle(kx + 4, ky + 3, 3.5, keyColor, 32, false, 1.5, 12, 0.9)
+    Bar(kx + 7, ky + 6, kx + 12, ky + 11, 1.5, keyColor, 32, 0.9)
+    if keyHover and Input.Click then
+        State.KeybindManagerOpen = not State.KeybindManagerOpen
+        State.ContextMenu = nil
+        State.Popup = nil
+        Input.Click = false
+        return
+    end
 
     local menuHover = MouseIn(menuX, menuY, menuSize, menuSize)
     if menuHover then
@@ -1853,7 +2006,8 @@ local function DrawTitleBar(title)
     if barHover and Input.Click and not State.Drag then
         local exclude =
             PointInRect(Input.X, Input.Y, closeX, closeY, closeSize, closeSize) or
-            PointInRect(Input.X, Input.Y, menuX, menuY, menuSize, menuSize)
+            PointInRect(Input.X, Input.Y, menuX, menuY, menuSize, menuSize) or
+            PointInRect(Input.X, Input.Y, keyX, keyY, keySize, keySize)
         if not exclude then
             BeginDrag()
             Input.Click = false
@@ -2104,6 +2258,7 @@ function Base.New(kind, parent, opts)
         Parent      = parent,
         Title       = opts.Title or "",
         Description = opts.Description or "",
+        Tooltip     = opts.Tooltip or "",
         Hidden      = false,
         Enabled     = true,
         _listeners  = {},
@@ -2571,24 +2726,129 @@ local function LayoutInline(row, x, y, w)
         local ctrl = row.Cells[i]
         if not ctrl.Hidden then
             ctrl:Draw(ctrl._inlineX, ctrl._inlineY, ctrl._inlineW)
+            if ctrl.Enabled ~= false and MouseIn(ctrl._inlineX, ctrl._inlineY, ctrl._inlineW, ctrl.Height or Layout.RowHeight) then
+                WantTooltip(ctrl.Tooltip or ctrl.Description)
+            end
         end
     end
 
     return maxH
 end
 
+local OpenContextMenu
+
 local function InputInline(row, x, y, w)
     for i = 1, #row.Cells do
         local ctrl = row.Cells[i]
         if not ctrl.Hidden then
-            ctrl:Input(ctrl._inlineX or x, ctrl._inlineY or y, ctrl._inlineW or w)
+            local cx = ctrl._inlineX or x
+            local cy = ctrl._inlineY or y
+            local cw = ctrl._inlineW or w
+            if Input.RightClick and ctrl.Enabled ~= false and MouseIn(cx, cy, cw, ctrl.Height or Layout.RowHeight) then
+                OpenContextMenu(ctrl)
+                Input.RightClick = false
+                return
+            end
+            ctrl:Input(cx, cy, cw)
         end
+    end
+end
+
+-- ============================================================================
+--  CONTEXT MENU  --  right-click controls for reset/copy actions
+-- ============================================================================
+
+local function ContextValueText(row)
+    if not row or not row.GetValue then return nil end
+    local ok, a, b = pcall(row.GetValue, row)
+    if not ok or a == nil then return nil end
+    if typeof and typeof(a) == "Color3" then
+        return string.format("#%02X%02X%02X", math.floor(a.R * 255 + 0.5), math.floor(a.G * 255 + 0.5), math.floor(a.B * 255 + 0.5))
+    end
+    if type(a) == "table" and a[1] ~= nil then return tostring(a[1]) .. " - " .. tostring(a[2]) end
+    if b ~= nil then return tostring(a) .. " - " .. tostring(b) end
+    return tostring(a)
+end
+
+local function CaptureDefault(row)
+    if not row or not row.GetValue then return end
+    local ok, a, b = pcall(row.GetValue, row)
+    if not ok then return end
+    row._defaultA = a
+    row._defaultB = b
+    if row.Kind == "ColorPicker" then row._defaultAlpha = row._alpha end
+end
+
+local function ResetControl(row)
+    if not row or not row.SetValue then return end
+    pcall(function()
+        if row.Kind == "RangeSlider" then
+            row:SetValue(row._defaultA, row._defaultB)
+        elseif row.Kind == "ColorPicker" then
+            row:SetValue(row._defaultA)
+            row._alpha = row._defaultAlpha or 1
+        elseif row._defaultA ~= nil then
+            row:SetValue(row._defaultA)
+        end
+    end)
+end
+
+OpenContextMenu = function(row)
+    local value = ContextValueText(row)
+    if not value then return end
+    State.ContextMenu = { Row = row, X = Input.X, Y = Input.Y, W = 190, Value = value }
+    State.Popup = State.ContextMenu
+    ClearTooltip()
+end
+
+local function DrawContextMenu()
+    local menu = State.ContextMenu
+    if not menu then return end
+    local th = State.Theme
+    local w, h = menu.W, 82
+    local vp = Camera.ViewportSize
+    local x = math.min(menu.X, vp.X - w - 8)
+    local y = math.min(menu.Y, vp.Y - h - 8)
+    local rowH = 24
+
+    Rect(x + 2, y + 3, w, h, Color3.new(0,0,0), 320, 8, 0.3)
+    Rect(x, y, w, h, th.Base, 321, 8, 0.98)
+    Stroke(x, y, w, h, th.Stroke, 322, 8, 0.7)
+
+    local actions = { "Reset to default", "Copy value", "Close" }
+    for i, label in ipairs(actions) do
+        local ry = y + 7 + (i - 1) * rowH
+        local hover = MouseIn(x + 5, ry, w - 10, rowH - 2)
+        if hover then Rect(x + 5, ry, w - 10, rowH - 2, th.Accent, 323, 5, 0.12) end
+        Text(label, x + 12, ry + 5, hover and th.Accent or th.Text, 12, FontSystem, 324, 0.95)
+    end
+
+    if Input.Click then
+        if MouseIn(x + 5, y + 7, w - 10, rowH - 2) then
+            ResetControl(menu.Row)
+            State.ContextMenu = nil
+            State.Popup = nil
+        elseif MouseIn(x + 5, y + 7 + rowH, w - 10, rowH - 2) then
+            pcall(function() if setclipboard then setclipboard(menu.Value) end end)
+            State.ContextMenu = nil
+            State.Popup = nil
+        elseif MouseIn(x + 5, y + 7 + rowH * 2, w - 10, rowH - 2) then
+            State.ContextMenu = nil
+            State.Popup = nil
+        elseif not MouseIn(x, y, w, h) then
+            State.ContextMenu = nil
+            State.Popup = nil
+        end
+        Input.Click = false
     end
 end
 
 -- ============================================================================
 --  CONTENT  --  generic render pass: walks a tab's rows and draws them
 -- ============================================================================
+
+local WantTooltip
+local DrawKeybindManager
 
 local ContentCursor = { y = 0 }
 
@@ -2609,6 +2869,9 @@ end
 
 local function MeasureSection(section, w)
     local panelW = math.max(1, w)
+    if section.Collapsed then
+        return GetSectionHeaderHeight(section) + 4
+    end
     local innerW = math.max(1, panelW - Layout.SectionPadX * 2)
     local contentH = 0
 
@@ -2642,7 +2905,7 @@ end
 local function DrawSection(section, x, y, w)
     local headerH = GetSectionHeaderHeight(section)
     local panelY = y + headerH
-    local panelH = MeasureSection(section, w) - headerH
+    local panelH = section.Collapsed and 0 or (MeasureSection(section, w) - headerH)
     local innerX = x + Layout.SectionPadX
     local innerY = panelY + Layout.SectionPadY
     local innerW = math.max(1, w - Layout.SectionPadX * 2)
@@ -2650,22 +2913,22 @@ local function DrawSection(section, x, y, w)
     section._layoutX = x
     section._layoutY = y
     section._layoutW = w
-    section._layoutH = headerH + panelH
+    section._layoutH = headerH + (section.Collapsed and 4 or panelH)
 
-    Text(section.Title,
-         x, y,
-         State.Theme.Text, Layout.TitleSize, FontBold,
-         50, 0.98, w)
+    local arrow = section.Collapsed and ">" or "v"
+    Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
+    Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, FontBold,
+         50, 0.98, math.max(1, w - 14))
 
     if section.Description and section.Description ~= "" then
-        Text(section.Description,
-             x, y + Layout.SectionTitleH,
-             State.Theme.TextDim, Layout.SmallSize, FontSystem,
-             50, 0.72, w)
+        Text(section.Description, x + 14, y + Layout.SectionTitleH,
+             State.Theme.TextDim, Layout.SmallSize, FontSystem, 50, 0.72, math.max(1, w - 14))
     end
 
-    -- Frosted panel body. The stronger transparency is intentional so the
-    -- controls feel contained without becoming another solid block.
+    if section.Collapsed then
+        return
+    end
+
     FrostedSurface(x, panelY, w, panelH, State.Theme.Panel, 40, Layout.SectionCorner)
     Stroke(x, panelY, w, panelH, State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
 
@@ -2688,6 +2951,15 @@ local function InputSection(section)
     local y = section._layoutY or 0
     local w = section._layoutW or 0
     local headerH = GetSectionHeaderHeight(section)
+
+    if MouseIn(x, y, w, headerH) and Input.Click then
+        section.Collapsed = not section.Collapsed
+        Input.Click = false
+        return
+    end
+
+    if section.Collapsed then return end
+
     local panelY = y + headerH
     local innerX = x + Layout.SectionPadX
     local innerY = panelY + Layout.SectionPadY
@@ -2723,6 +2995,9 @@ function DrawRow(row, x, y, w)
 
     if row.Draw then
         row:Draw(x, y, w)
+        if row.Enabled ~= false and MouseIn(x, y, w, row.Height or Layout.RowHeight) then
+            WantTooltip(row.Tooltip or row.Description)
+        end
         return row.Height or Layout.RowHeight
     end
 
@@ -2731,6 +3006,12 @@ end
 
 function InputRow(row, x, y, w)
     if row.Hidden then return 0 end
+
+    if Input.RightClick and row.Enabled ~= false and MouseIn(x, y, w, row.Height or Layout.RowHeight) then
+        OpenContextMenu(row)
+        Input.RightClick = false
+        return row.Height or Layout.RowHeight
+    end
 
     if IsSection(row) then
         InputSection(row)
@@ -3840,7 +4121,7 @@ local function InputContent()
         end
     end
 
-    if Input.Click and State.Popup then
+    if Input.Click and State.Popup and not State.ContextMenu and not State.KeybindManagerOpen then
         State.Popup = nil
     end
 end
@@ -4100,7 +4381,7 @@ local Tooltip = {
     Delay = 0.35,
 }
 
-local function WantTooltip(text)
+WantTooltip = function(text)
     if not text or text == "" then return end
     if Tooltip.Current ~= text then
         Tooltip.Current = text
@@ -4272,116 +4553,6 @@ local function HUDBox_Remove(box)
 end
 
 -- ============================================================================
---  CONFIG  --  save/load values keyed by tab+row path
--- ============================================================================
-
-local function BuildPath(tab, row)
-    local tabName = tab and tab.Name or "?"
-    local rowName = row and row.Title or "?"
-    return tabName .. "/" .. rowName
-end
-
-local function CollectConfig()
-    local out = {}
-    for _, tab in ipairs(State.Tabs) do
-        local function walk(container, pathPrefix)
-            for _, row in ipairs(container.Rows or {}) do
-                local path = pathPrefix .. (row.Title or "")
-
-                if getmetatable(row) == Section then
-                    walk(row, path .. "/")
-                elseif getmetatable(row) == InlineRow then
-                    -- inline cells not individually tracked
-                elseif row.Kind == "Toggle" then
-                    out[path] = { k = "Toggle", v = row.Value }
-                elseif row.Kind == "Slider" then
-                    out[path] = { k = "Slider", v = row.Value }
-                elseif row.Kind == "Dropdown" then
-                    out[path] = { k = "Dropdown", v = row.Value }
-                elseif row.Kind == "Keybind" then
-                    out[path] = { k = "Keybind", v = row.Value }
-                elseif row.Kind == "Textbox" then
-                    out[path] = { k = "Textbox", v = row.Value }
-                elseif row.Kind == "RangeSlider" then
-                    out[path] = { k = "RangeSlider", lo = row.Low, hi = row.High }
-                elseif row.Kind == "ColorPicker" then
-                    out[path] = {
-                        k = "ColorPicker",
-                        r = row.Value.R, g = row.Value.G, b = row.Value.B,
-                        a = row._alpha or 1,
-                    }
-                end
-            end
-        end
-        walk(tab, tab.Name .. "/")
-    end
-    return out
-end
-
-local function ApplyConfig(data)
-    if not data then return end
-    for _, tab in ipairs(State.Tabs) do
-        local function walk(container, pathPrefix)
-            for _, row in ipairs(container.Rows or {}) do
-                local path = pathPrefix .. (row.Title or "")
-
-                if getmetatable(row) == Section then
-                    walk(row, path .. "/")
-                else
-                    local entry = data[path]
-                    if entry then
-                        pcall(function()
-                            if entry.k == "Toggle" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Slider" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Dropdown" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Keybind" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "Textbox" then
-                                row:SetValue(entry.v, true)
-                            elseif entry.k == "RangeSlider" then
-                                row:SetValue(entry.lo, entry.hi, true)
-                            elseif entry.k == "ColorPicker" then
-                                row:SetValue(Color3.new(entry.r, entry.g, entry.b), true)
-                                row._alpha = entry.a or 1
-                            end
-                        end)
-                    end
-                end
-            end
-        end
-        walk(tab, tab.Name .. "/")
-    end
-end
-
-local function SaveConfig()
-    local data = CollectConfig()
-    local ok, encoded = pcall(function()
-        return HttpService:JSONEncode(data)
-    end)
-    if not ok then return false end
-    local ok2 = pcall(function()
-        writefile(State.ConfigFile, encoded)
-    end)
-    return ok2
-end
-
-local function LoadConfig()
-    local ok, exists = pcall(function() return isfile(State.ConfigFile) end)
-    if not ok or not exists then return false end
-    local ok2, raw = pcall(function() return readfile(State.ConfigFile) end)
-    if not ok2 then return false end
-    local ok3, decoded = pcall(function()
-        return HttpService:JSONDecode(raw)
-    end)
-    if not ok3 or not decoded then return false end
-    ApplyConfig(decoded)
-    return true
-end
-
--- ============================================================================
 --  OPEN / CLOSE  --  visibility animation
 -- ============================================================================
 
@@ -4404,6 +4575,8 @@ local function ToggleUI()
         ClearFocus()
         CancelCapture()
         State.Popup = nil
+        State.ContextMenu = nil
+        State.KeybindManagerOpen = false
         ClearTooltip()
     end
 end
@@ -4514,13 +4687,13 @@ local function Render()
 
     -- render back-to-front
     DrawFrame()
-    DrawTitleBar("SHADOW UI")
+    DrawTitleBar(State.WindowTitle, State.WindowSubtitle)
     DrawTabRail()
     DrawContent()
 
     -- Do not interact with partially revealed controls. They become live once
     -- the reveal reaches the final frame.
-    if not startupIsReveal then
+    if not startupIsReveal and not State.KeybindManagerOpen and not State.ContextMenu then
         InputContent()
     end
 
@@ -4530,6 +4703,8 @@ local function Render()
     TickNotifications(State.Delta)
     DrawNotifications()
     DrawTooltip()
+    DrawContextMenu()
+    DrawKeybindManager()
 
     -- HUD boxes
     DrawHUDBoxes()
@@ -4570,31 +4745,131 @@ local function IsBindClicked(bindName)
 end
 
 -- ============================================================================
---  PUBLIC API  --  the ShadowUI table every user script talks to
+--  KEYBIND MANAGER
 -- ============================================================================
 
-local ShadowUI = {}
+local function CollectKeybinds()
+    local out = {}
+    local function walk(container, prefix)
+        for _, row in ipairs(container.Rows or {}) do
+            if getmetatable(row) == Section then
+                walk(row, prefix .. row.Title .. "/")
+            elseif getmetatable(row) == InlineRow then
+                for _, ctrl in ipairs(row.Cells or {}) do
+                    if ctrl.Kind == "Keybind" then
+                        out[#out + 1] = { Path = prefix .. (ctrl.Title ~= "" and ctrl.Title or "Keybind"), Row = ctrl }
+                    end
+                end
+            elseif row.Kind == "Keybind" then
+                out[#out + 1] = { Path = prefix .. (row.Title ~= "" and row.Title or "Keybind"), Row = row }
+            end
+        end
+    end
+    for _, tab in ipairs(State.Tabs) do
+        walk(tab, tab.Name .. "/")
+    end
+    return out
+end
+
+DrawKeybindManager = function()
+    if not State.KeybindManagerOpen then return end
+    local th = State.Theme
+    local vp = Camera.ViewportSize
+    local w = math.min(390, vp.X - 32)
+    local h = math.min(430, vp.Y - 32)
+    local x = math.floor((vp.X - w) / 2)
+    local y = math.floor((vp.Y - h) / 2)
+
+    Rect(x + 4, y + 5, w, h, Color3.new(0,0,0), 330, 12, 0.35)
+    Rect(x, y, w, h, th.Base, 331, 12, 0.98)
+    Stroke(x, y, w, h, th.Stroke, 332, 12, 0.8)
+    Text("Keybinds", x + 16, y + 14, th.Text, 15, FontBold, 333, 1)
+    Text("All active keybind controls", x + 16, y + 34, th.TextDim, 11, FontSystem, 333, 0.7)
+
+    local closeX, closeY, closeW, closeH = x + w - 32, y + 10, 22, 22
+    local closeHover = MouseIn(closeX, closeY, closeW, closeH)
+    if closeHover then Rect(closeX, closeY, closeW, closeH, th.Danger, 334, 6, 0.16) end
+    Text("x", closeX + 7, closeY + 3, closeHover and th.Danger or th.TextDim, 12, FontBold, 335, 1)
+
+    local list = CollectKeybinds()
+    local rowY = y + 68
+    for i, entry in ipairs(list) do
+        if rowY + 34 > y + h - 10 then break end
+        local hover = MouseIn(x + 10, rowY, w - 20, 30)
+        if hover then Rect(x + 10, rowY, w - 20, 30, th.Accent, 336, 6, 0.08) end
+        Text(entry.Path, x + 18, rowY + 8, th.Text, 11, FontSystem, 337, 0.9, w - 100)
+        local value = tostring(entry.Row.Value or "none")
+        local valueW = TextWidth(value, 11, FontMono)
+        Text(string.upper(value), x + w - valueW - 20, rowY + 8, th.Accent, 11, FontMono, 337, 1)
+        rowY = rowY + 34
+    end
+
+    if #list == 0 then
+        Text("No keybind controls have been added.", x + 18, rowY + 8, th.TextMuted, 11, FontSystem, 337, 0.8)
+    end
+
+    if Input.Click then
+        if closeHover or not MouseIn(x, y, w, h) then
+            State.KeybindManagerOpen = false
+            Input.Click = false
+        end
+    end
+end
+
+-- ============================================================================
+--  PUBLIC API  --  the Library table every user script talks to
+-- ============================================================================
+
+local Library = {}
 
 -- CreateWindow is the public constructor used by showcase/user scripts.
 -- The startup animation is part of the same window.
-function ShadowUI:CreateWindow(opts)
+function Library:CreateWindow(opts)
     opts = opts or {}
-    if opts.Width then State.W = math.max(Layout.WindowMinW, tonumber(opts.Width) or State.W) end
-    if opts.Height then State.H = math.max(Layout.WindowMinH, tonumber(opts.Height) or State.H) end
-    if opts.MenuKey then State.MenuKey = string.lower(tostring(opts.MenuKey)) end
+
+    local size = opts.Size or opts.size
+    if type(size) == "userdata" or type(size) == "table" then
+        local sw = tonumber(size.X or size.x)
+        local sh = tonumber(size.Y or size.y)
+        if sw then State.W = math.max(Layout.WindowMinW, sw) end
+        if sh then State.H = math.max(Layout.WindowMinH, sh) end
+    else
+        if opts.Width or opts.width then State.W = math.max(Layout.WindowMinW, tonumber(opts.Width or opts.width) or State.W) end
+        if opts.Height or opts.height then State.H = math.max(Layout.WindowMinH, tonumber(opts.Height or opts.height) or State.H) end
+    end
+
+    State.WindowTitle = tostring(opts.Title or opts.title or opts.Name or opts.name or State.WindowTitle or "Window")
+    State.WindowSubtitle = tostring(opts.Subtitle or opts.subtitle or "")
+    if opts.MenuKey or opts.menuKey then State.MenuKey = string.lower(tostring(opts.MenuKey or opts.menuKey)) end
+    if opts.NoAnim ~= nil or opts.noAnim ~= nil then State.NoAnim = (opts.NoAnim ~= nil and opts.NoAnim or opts.noAnim) and true or false end
+    if opts.Background ~= nil or opts.background ~= nil then State.Background = NormalizeBackground(opts.Background or opts.background) end
+    local themeOption = opts.Theme or opts.theme
+    if themeOption ~= nil then
+        if type(themeOption) == "string" then
+            for i, th in ipairs(Themes) do
+                if string.lower(th.Name) == string.lower(themeOption) then
+                    State.Theme = th
+                    State.ThemeIndex = i
+                    break
+                end
+            end
+        elseif type(themeOption) == "table" then
+            ApplyThemeOptions(themeOption)
+        end
+    end
+
     StartStartup({
-        Duration = opts.StartupDuration or opts.Duration or 5.0,
+        Duration = opts.StartupDuration or opts.startupDuration or opts.Duration or opts.duration or 5.0,
     })
     return self
 end
-
-ShadowUI.Themes         = Themes
-ShadowUI.Layout         = Layout
-ShadowUI.State          = State
-ShadowUI.Tabs           = {}
+Library.Themes         = Themes
+Library.Layout         = Layout
+Library.State          = State
+Library.Tabs           = {}
 
 -- tabs ----------------------------------------------------------------------
-function ShadowUI:AddTab(opts)
+function Library:AddTab(opts)
     opts = opts or {}
     local tab = Tab.new(self, opts)
     EnsureWindowFitsTabs()
@@ -4604,78 +4879,77 @@ function ShadowUI:AddTab(opts)
     return tab
 end
 
-function ShadowUI:GetTab(name)
+function Library:GetTab(name)
     local tab = FindTab(name)
     return tab
 end
 
-function ShadowUI:SelectTab(name)
+function Library:SelectTab(name)
     SetActiveTabByName(name)
 end
 
 -- notifications -------------------------------------------------------------
-function ShadowUI:Notify(opts)
+function Library:Notify(opts)
     return Notify(opts)
 end
 
 -- theme ---------------------------------------------------------------------
-function ShadowUI:SetTheme(name)
+function Library:SetTheme(name)
     return SetThemeByName(name)
 end
 
-function ShadowUI:NextTheme()
+function Library:NextTheme()
     NextTheme()
 end
 
+function Library:SetBackground(effect)
+    State.Background = NormalizeBackground(effect)
+end
+
+function Library:OpenKeybinds()
+    State.KeybindManagerOpen = true
+end
+
+function Library:CloseKeybinds()
+    State.KeybindManagerOpen = false
+end
+
 -- hotkey --------------------------------------------------------------------
-function ShadowUI:SetKeybind(key)
+function Library:SetKeybind(key)
     State.MenuKey = string.lower(tostring(key))
 end
 
--- config --------------------------------------------------------------------
-function ShadowUI:Save()
-    return SaveConfig()
-end
-
-function ShadowUI:Load()
-    return LoadConfig()
-end
-
-function ShadowUI:SetConfigFile(path)
-    State.ConfigFile = path
-end
-
 -- lifecycle ----------------------------------------------------------------
-function ShadowUI:Toggle()   ToggleUI() end
-function ShadowUI:Show()     State.Open = true end
-function ShadowUI:Hide()     State.Open = false end
-function ShadowUI:StartStartup(opts) StartStartup(opts) end
+function Library:Toggle()   ToggleUI() end
+function Library:Show()     State.Open = true end
+function Library:Hide()     State.Open = false end
+function Library:StartStartup(opts) StartStartup(opts) end
 
-function ShadowUI:IsAlive() return State.Alive end
+function Library:IsAlive() return State.Alive end
 
-function ShadowUI:Destroy()
+function Library:Destroy()
     State.Alive = false
-    pcall(function() SaveConfig() end)
     ClearPool()
     ClearFocus()
     CancelCapture()
-    _G.ShadowUI = nil
 end
 
 -- HUD boxes ----------------------------------------------------------------
-function ShadowUI:CreateBox(opts)
+function Library:CreateBox(opts)
     return HUDBox.new(opts)
 end
 
-ShadowUI.IsBindHeld    = IsBindHeld
-ShadowUI.IsBindClicked = IsBindClicked
+Library.IsBindHeld    = IsBindHeld
+Library.IsBindClicked = IsBindClicked
 
 
 local function AttachControl(parentType, methodName, ctorName)
     local ctor = Controls[ctorName]
     if not ctor then return end
     parentType[methodName] = function(self, opts)
-        return ctor(self, opts)
+        local obj = ctor(self, opts)
+        CaptureDefault(obj)
+        return obj
     end
 end
 
@@ -4693,8 +4967,8 @@ for _, parentType in ipairs({ Tab, Section }) do
 end
 
 
-function Tab:AddSection(title, description)
-    return Section.new(self, title, description)
+function Tab:AddSection(title, description, opts)
+    return Section.new(self, title, description, opts)
 end
 
 
@@ -4727,18 +5001,10 @@ for _, ctrlName in ipairs({
     local ctor = Controls[ctrlName]
     if ctor then
         Base["Add" .. ctrlName] = function(self, opts)
-            return ctor(self.Parent, opts)
+            local obj = ctor(self.Parent, opts)
+            CaptureDefault(obj)
+            return obj
         end
-    end
-end
-
-_G.ShadowUI = ShadowUI
-_G.Shadow   = ShadowUI   -- alias
-
-do
-    local prev = _G.ShadowUI
-    if prev and prev ~= ShadowUI and prev.Destroy then
-        pcall(function() prev:Destroy() end)
     end
 end
 
@@ -4748,28 +5014,16 @@ do
     State.Y = math.floor((vp.Y - State.H) / 2)
 end
 
-pcall(LoadConfig)
-
 task.spawn(function()
     while State.Alive do
         local ok, err = pcall(Render)
         if not ok then
-            warn("[ShadowUI] render error:", tostring(err))
+            warn("[Library] render error:", tostring(err))
         end
         task.wait(1 / 60)
     end
 end)
 
-task.spawn(function()
-    while State.Alive do
-        task.wait(15)
-        pcall(SaveConfig)
-    end
-end)
 
-ShadowUI:Notify({
-    Title   = "Shadow UI loaded",
-    Content = "Press " .. string.upper(State.MenuKey) .. " to toggle",
-    Type    = "info",
-    Duration = 4,
-})
+
+return Library
