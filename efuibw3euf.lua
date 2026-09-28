@@ -1797,10 +1797,6 @@ local function DrawStartupFrame()
     Text(title, titleX, titleY, th.Text, titleSize, FontBold,
          32, ease, math.max(40, w - (titleX - x) - 24))
 
-    Text("INITIALIZING", titleX, titleY + 18,
-         th.TextMuted, 8, FontMono, 33, 0.72 * ease,
-         math.max(50, w - (titleX - x) - 24))
-
     local railX = x + 18
     local railW = math.max(70, w - 36)
     local railY = y + h - 13
@@ -1813,10 +1809,6 @@ local function DrawStartupFrame()
                th.Text, 36, true, 1, 12, 0.92)
     end
 
-    local pct = tostring(math.floor(progress * 100 + 0.5)) .. "%"
-    local pctW = TextWidth(pct, 8, FontMono)
-    Text(pct, x + w - pctW - 18, y + 11,
-         th.TextMuted, 8, FontMono, 37, 0.72, pctW + 2)
 end
 
 local function TickStartup(dt)
@@ -1928,22 +1920,21 @@ local function DrawTitleBar(title, subtitle)
     local titleX = State.X + (State.W - titleW) / 2
     local titleY = TextMidY(State.Y, Layout.TopbarH, titleSize)
 
-    Text(title, titleX, titleY, th.Text, titleSize, FontBold, 33, 0.96, titleW + 2)
+    -- Clean centered identity:  ------  SHADOW UI  ------
+    local gap = 12
+    local railW = math.min(58, math.max(28, (State.W - titleW - 190) / 2))
+    local railY = State.Y + Layout.TopbarH / 2
+    local leftEnd = titleX - gap
+    local leftStart = leftEnd - railW
+    local rightStart = titleX + titleW + gap
 
-    -- Soft left-to-right shimmer across the centered title.
-    if not State.NoAnim and titleW > 4 then
-        local phase = (os.clock() % 2.65) / 2.65
-        local shimmerCenter = titleX + phase * (titleW + 34) - 17
-        local offsets = {-10, -6, -3, 0, 3, 6, 10}
-        local alphas = {0.03, 0.07, 0.14, 0.36, 0.14, 0.07, 0.03}
-        for i = 1, #offsets do
-            local gx = shimmerCenter + offsets[i]
-            if gx >= titleX and gx <= titleX + titleW then
-                Rect(gx, titleY - 1, 1.25, titleSize + 3,
-                     Color3.new(1, 1, 1), 35 + i, 1, alphas[i])
-            end
-        end
-    end
+    GradientRect(leftStart, railY, railW, 1,
+                 th.AccentA, th.TextDim, 32, 0.48)
+    GradientRect(rightStart, railY, railW, 1,
+                 th.TextDim, th.AccentB, 32, 0.48)
+
+    Text(title, titleX, titleY, th.Text, titleSize, FontBold,
+         34, 0.98, titleW + 2)
 
     local closeSize = TitleButtons.Close.Size
     local closeX = State.X + State.W - closeSize - 8
@@ -4750,10 +4741,11 @@ local function GetKeybindOverlayGeometry()
     local vp = Camera.ViewportSize
     local list = CollectKeybinds()
     local maxRows = math.min(#list, 8)
-    local rowH = 24
-    local headerH = 30
-    local w = 210
-    local h = headerH + math.max(1, maxRows) * rowH + 12
+    local rowH = 28
+    local headerH = 38
+    local footerH = #list > 8 and 22 or 10
+    local w = 248
+    local h = headerH + math.max(1, maxRows) * rowH + footerH
     local x = KeybindHUD.X
     if x == nil then x = math.max(10, vp.X - w - 18) end
     x = math.max(6, math.min(x, math.max(6, vp.X - w - 6)))
@@ -4790,49 +4782,62 @@ DrawKeybindOverlay = function()
     local th = State.Theme
     local x, y, w, h, headerH, rowH, list = GetKeybindOverlayGeometry()
 
-    -- High-contrast persistent HUD. It remains visible while the main UI is
-    -- hidden and can be dragged from anywhere inside the box.
-    Rect(x + 3, y + 4, w, h, Color3.new(0, 0, 0), 330, 10, 0.48)
-    Rect(x, y, w, h, th.Base, 331, 10, 0.98)
-    Stroke(x, y, w, h, th.Accent, 332, 10, 0.8)
-    Rect(x + 1, y + 1, w - 2, 2, th.Accent, 333, 9, 0.9)
+    local previousAlpha = FrameAlpha
+    FrameAlpha = 1
 
-    Text("KEYBINDS", x + 12, y + 8, th.Text, 13, FontBold, 334, 1)
-    Text("DRAG TO MOVE", x + w - 82, y + 9, th.TextDim, 8, FontSystem, 334, 0.8)
+    Rect(x + 3, y + 5, w, h, Color3.new(0, 0, 0), 330, 9, 0.38)
+    Rect(x, y, w, h, rgb(13, 16, 23), 331, 9, 0.96)
+    Stroke(x, y, w, h, Color3.new(1, 1, 1), 332, 9, 0.16)
+    GradientRect(x + 12, y + 1, w - 24, 1,
+                 th.AccentA, th.AccentB, 333, 0.72)
+
+    Text("KEYBINDS", x + 14, y + 10, th.Text, 12, FontBold, 334, 1)
+    Text("drag", x + w - 36, y + 12, th.TextDim, 8, FontSystem, 334, 0.55)
+
+    Line(x + 12, y + headerH - 1, x + w - 12, y + headerH - 1,
+         Color3.new(1, 1, 1), 334, 1, 0.10)
 
     local rowY = y + headerH
     if #list == 0 then
-        Text("No keybinds", x + 12, rowY + 5, th.TextDim, 11, FontSystem, 335, 0.9)
+        Text("No keybinds assigned", x + 14, rowY + 8,
+             th.TextDim, 10, FontSystem, 335, 0.82)
+        FrameAlpha = previousAlpha
         return
     end
 
     for i = 1, math.min(#list, 8) do
         local entry = list[i]
-        local rowX = x + 8
-        local rowW = w - 16
-        if i % 2 == 0 then
-            Rect(rowX, rowY, rowW, rowH, th.Panel, 335, 5, 0.55)
+        local title = entry.Path or "Keybind"
+        local value = string.upper(tostring(entry.Row and entry.Row.Value or "NONE"))
+        local valueW = TextWidth(value, 10, FontMono)
+        local pillW = math.max(30, valueW + 14)
+        local pillX = x + w - pillW - 12
+
+        if i > 1 then
+            Line(x + 14, rowY, x + w - 14, rowY,
+                 Color3.new(1, 1, 1), 335, 1, 0.055)
         end
 
-        local title = entry.Path or "Keybind"
-        local value = string.upper(tostring(entry.Row and entry.Row.Value or "none"))
-        local valueW = TextWidth(value, 11, FontMono)
-        local titleMax = math.max(40, w - 38 - valueW)
+        Rect(x + 13, rowY + 9, 2, 10, th.AccentA, 336, 1, 0.72)
 
-        Text(title, x + 14, rowY + 6, th.Text, 11, FontSystem, 336, 1, titleMax)
+        local titleMax = math.max(54, pillX - (x + 23) - 8)
+        Text(title, x + 23, rowY + 7, th.Text, 10, FontSystem,
+             336, 0.94, titleMax)
 
-        Rect(x + w - valueW - 20, rowY + 4, valueW + 10, 16,
-             th.Accent, 337, 4, 0.12)
-        Text(value, x + w - valueW - 15, rowY + 6,
-             th.Accent, 11, FontMono, 338, 1, valueW + 5)
+        Rect(pillX, rowY + 6, pillW, 17, th.Accent, 337, 4, 0.10)
+        Stroke(pillX, rowY + 6, pillW, 17, th.Accent, 338, 4, 0.30)
+        Text(value, pillX + (pillW - valueW) / 2, rowY + 8,
+             th.Accent, 10, FontMono, 339, 1, valueW + 2)
 
         rowY = rowY + rowH
     end
 
     if #list > 8 then
-        Text("+" .. tostring(#list - 8) .. " more", x + 14, rowY + 2,
-             th.TextDim, 9, FontSystem, 339, 0.8)
+        Text("+" .. tostring(#list - 8) .. " more keybinds",
+             x + 14, rowY + 5, th.TextDim, 8, FontSystem, 339, 0.68)
     end
+
+    FrameAlpha = previousAlpha
 end
 
 -- ============================================================================
@@ -4882,7 +4887,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v32-SHRINK-POP-SHIMMER"
+Library.Version       = "v33-CLEAN-HEADER-OVERLAY"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5044,7 +5049,7 @@ end)
 
 
 
-Library.Version = "v32-SHRINK-POP-SHIMMER"
+Library.Version = "v33-CLEAN-HEADER-OVERLAY"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
