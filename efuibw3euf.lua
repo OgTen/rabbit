@@ -110,7 +110,63 @@ local Themes = {
         Danger      = rgb(255, 80, 80),
         Warning     = rgb(255, 190, 90),
         Success     = rgb(140, 220, 160),
+    },,
+
+    {
+        Name="Cyber",
+        Base=rgb(8,12,22), Panel=rgb(12,20,34), PanelHi=rgb(18,29,47),
+        Stroke=rgb(31,82,105), Divider=rgb(24,69,91),
+        Text=rgb(231,250,255), TextDim=rgb(166,218,229), TextMuted=rgb(103,153,169),
+        AccentA=rgb(0,229,255), AccentB=rgb(170,75,255), Accent=rgb(0,210,245),
+        AccentDim=rgb(24,111,139), Track=rgb(24,45,62), TrackFill=rgb(0,229,255),
+        Danger=rgb(255,78,116), Warning=rgb(255,194,92), Success=rgb(70,231,161),
     },
+    {
+        Name="Bubblegum",
+        Base=rgb(34,20,39), Panel=rgb(48,27,55), PanelHi=rgb(62,34,69),
+        Stroke=rgb(104,58,96), Divider=rgb(92,49,85),
+        Text=rgb(255,239,249), TextDim=rgb(236,184,218), TextMuted=rgb(176,122,160),
+        AccentA=rgb(255,104,181), AccentB=rgb(118,188,255), Accent=rgb(245,116,190),
+        AccentDim=rgb(155,70,122), Track=rgb(72,40,68), TrackFill=rgb(255,104,181),
+        Danger=rgb(255,84,116), Warning=rgb(255,190,105), Success=rgb(102,226,169),
+    },
+    {
+        Name="Emerald",
+        Base=rgb(10,24,20), Panel=rgb(14,34,28), PanelHi=rgb(20,47,38),
+        Stroke=rgb(42,91,74), Divider=rgb(35,78,64),
+        Text=rgb(233,255,247), TextDim=rgb(169,218,201), TextMuted=rgb(109,161,143),
+        AccentA=rgb(55,232,154), AccentB=rgb(73,198,255), Accent=rgb(55,220,148),
+        AccentDim=rgb(35,135,96), Track=rgb(28,61,51), TrackFill=rgb(55,232,154),
+        Danger=rgb(255,91,109), Warning=rgb(250,190,91), Success=rgb(55,232,154),
+    },
+    {
+        Name="Crimson",
+        Base=rgb(30,13,17), Panel=rgb(43,18,24), PanelHi=rgb(57,23,31),
+        Stroke=rgb(103,42,53), Divider=rgb(88,34,45),
+        Text=rgb(255,239,241), TextDim=rgb(225,174,181), TextMuted=rgb(165,111,120),
+        AccentA=rgb(255,70,92), AccentB=rgb(255,145,72), Accent=rgb(246,73,96),
+        AccentDim=rgb(153,46,62), Track=rgb(68,29,37), TrackFill=rgb(255,70,92),
+        Danger=rgb(255,70,92), Warning=rgb(255,177,80), Success=rgb(85,222,148),
+    },
+    {
+        Name="Arctic",
+        Base=rgb(13,23,34), Panel=rgb(18,33,47), PanelHi=rgb(25,46,64),
+        Stroke=rgb(54,94,116), Divider=rgb(45,81,102),
+        Text=rgb(239,250,255), TextDim=rgb(181,216,232), TextMuted=rgb(119,158,178),
+        AccentA=rgb(115,210,255), AccentB=rgb(177,149,255), Accent=rgb(111,201,247),
+        AccentDim=rgb(69,128,160), Track=rgb(35,61,79), TrackFill=rgb(115,210,255),
+        Danger=rgb(255,100,125), Warning=rgb(255,197,104), Success=rgb(94,224,170),
+    },
+    {
+        Name="Sunset",
+        Base=rgb(34,18,23), Panel=rgb(48,24,31), PanelHi=rgb(62,30,39),
+        Stroke=rgb(109,58,55), Divider=rgb(95,49,48),
+        Text=rgb(255,243,236), TextDim=rgb(232,190,171), TextMuted=rgb(173,126,112),
+        AccentA=rgb(255,132,74), AccentB=rgb(255,79,151), Accent=rgb(255,116,82),
+        AccentDim=rgb(163,73,65), Track=rgb(75,39,43), TrackFill=rgb(255,132,74),
+        Danger=rgb(255,77,102), Warning=rgb(255,184,83), Success=rgb(102,224,151),
+    },
+
 }
 
 -- ============================================================================
@@ -519,7 +575,11 @@ local Icons = {
 
     -- window glyphs
     ["window"]    = { {4,5, 16,5, 1.6, 1}, {4,5, 4,15, 1.6, 1}, {16,5, 16,15, 1.6, 1}, {4,15, 16,15, 1.6, 1}, {4,9, 16,9, 1.6, 1} },
-    ["home"]      = { {3,9, 10,3, 1.5, 1}, {10,3, 17,9, 1.5, 1}, {5,9, 5,17, 1.5, 1}, {5,17, 15,17, 1.5, 1}, {15,17, 15,9, 1.5, 1}, {8,17, 8,11, 1.3, 1}, {8,11, 12,11, 1.3, 1}, {12,11, 12,17, 1.3, 1} },
+    ["home"] = {
+        {4,9,10,4,1.45,1},{10,4,16,9,1.45,1},
+        {5.5,8,5.5,16,1.45,1},{5.5,16,14.5,16,1.45,1},{14.5,16,14.5,8,1.45,1},
+        {8.5,16,8.5,11.5,1.3,1},{8.5,11.5,11.5,11.5,1.3,1},{11.5,11.5,11.5,16,1.3,1}
+    },
     ["gear"]      = {
         {10,3, 10,5, 1.6, 1}, {10,15, 10,17, 1.6, 1},
         {3,10, 5,10, 1.6, 1}, {15,10, 17,10, 1.6, 1},
@@ -535,7 +595,12 @@ local Icons = {
     ["user"]      = { {10,4, 10,4.5, 1.8, 1}, {7,7, 13,7, 1.6, 1}, {7,7, 7,10, 1.6, 1}, {13,7, 13,10, 1.6, 1}, {7,10, 13,10, 1.6, 1}, {5,17, 10,12, 1.6, 1}, {15,17, 10,12, 1.6, 1}, {5,17, 15,17, 1.6, 1} },
     ["shield"]    = { {10,3, 16,5, 1.6, 1}, {16,5, 16,10, 1.6, 1}, {16,10, 10,17, 1.6, 1}, {10,17, 4,10, 1.6, 1}, {4,10, 4,5, 1.6, 1}, {4,5, 10,3, 1.6, 1} },
     ["bell"]      = { {6,9, 6,14, 1.6, 1}, {14,9, 14,14, 1.6, 1}, {6,9, 10,4, 1.6, 1}, {10,4, 14,9, 1.6, 1}, {4,14, 16,14, 1.6, 1}, {9,16, 11,16, 1.6, 1} },
-    ["eye"]       = { {2,10, 6,6, 1.6, 1}, {6,6, 14,6, 1.6, 1}, {14,6, 18,10, 1.6, 1}, {18,10, 14,14, 1.6, 1}, {14,14, 6,14, 1.6, 1}, {6,14, 2,10, 1.6, 1}, {8,8, 12,12, 1.4, 1}, {12,8, 8,12, 1.4, 1} },
+    ["eye"] = {
+        {3,10,6.5,6.5,1.4,1},{6.5,6.5,10,5.5,1.4,1},{10,5.5,13.5,6.5,1.4,1},
+        {13.5,6.5,17,10,1.4,1},{17,10,13.5,13.5,1.4,1},{13.5,13.5,10,14.5,1.4,1},
+        {10,14.5,6.5,13.5,1.4,1},{6.5,13.5,3,10,1.4,1},
+        {8,10,10,8,1.35,1},{10,8,12,10,1.35,1},{12,10,10,12,1.35,1},{10,12,8,10,1.35,1}
+    },
     ["search"]    = { {3,3, 12,3, 1.6, 1}, {12,3, 12,12, 1.6, 1}, {12,12, 3,12, 1.6, 1}, {3,12, 3,3, 1.6, 1}, {12,12, 17,17, 2, 1} },
     ["crosshair"] = { {10,3, 10,7, 1.4, 1}, {10,13, 10,17, 1.4, 1}, {3,10, 7,10, 1.4, 1}, {13,10, 17,10, 1.4, 1}, {6,10, 6,7, 1.3, 0.8}, {6,7, 10,7, 1.3, 0.8}, {10,7, 14,7, 1.3, 0.8}, {14,7, 14,10, 1.3, 0.8}, {14,10, 14,13, 1.3, 0.8}, {14,13, 10,13, 1.3, 0.8}, {10,13, 6,13, 1.3, 0.8}, {6,13, 6,10, 1.3, 0.8} },
     ["play"]      = { {6,4, 6,16, 1.8, 1}, {6,4, 16,10, 1.8, 1}, {6,16, 16,10, 1.8, 1} },
@@ -562,7 +627,19 @@ local Icons = {
     ["layers"]    = { {4,6, 10,3, 1.4, 1}, {10,3, 16,6, 1.4, 1}, {16,6, 10,9, 1.4, 1}, {10,9, 4,6, 1.4, 1}, {4,10, 10,7, 1.4, 1}, {10,7, 16,10, 1.4, 1}, {16,10, 10,13, 1.4, 1}, {10,13, 4,10, 1.4, 1}, {4,14, 10,11, 1.4, 1}, {10,11, 16,14, 1.4, 1}, {16,14, 10,17, 1.4, 1}, {10,17, 4,14, 1.4, 1} },
     ["globe"]     = { {10,3, 10,17, 1.4, 1}, {3,10, 17,10, 1.4, 1}, {5,6, 15,6, 1.3, 1}, {5,14, 15,14, 1.3, 1}, {10,3, 6,6, 1.3, 1}, {6,6, 4,10, 1.3, 1}, {4,10, 6,14, 1.3, 1}, {6,14, 10,17, 1.3, 1}, {10,3, 14,6, 1.3, 1}, {14,6, 16,10, 1.3, 1}, {16,10, 14,14, 1.3, 1}, {14,14, 10,17, 1.3, 1} },
     ["zap"]       = { {12,3, 6,10, 1.6, 1}, {6,10, 10,10, 1.6, 1}, {10,10, 8,17, 1.6, 1}, {8,17, 15,8, 1.6, 1}, {15,8, 11,8, 1.6, 1} },
-    ["settings-sliders"] = { {3,5, 17,5, 1.5, 1}, {3,10, 17,10, 1.5, 1}, {3,15, 17,15, 1.5, 1}, {6,3, 6,7, 1.7, 1}, {13,8, 13,12, 1.7, 1}, {8,13, 8,17, 1.7, 1} },
+    ["settings-sliders"] = { {3,5, 17,5, 1.5, 1}, {3,10, 17,10, 1.5, 1}, {3,15, 17,15, 1.5, 1}, {6,3, 6,7, 1.7, 1}, {13,8, 13,12, 1.7, 1}, {8,13, 8,17, 1.7, 1} },,
+
+    ["keyboard"] = {
+        {3,5,17,5,1.4,1},{17,5,17,15,1.4,1},{17,15,3,15,1.4,1},{3,15,3,5,1.4,1},
+        {5,8,6,8,1.4,1},{8,8,9,8,1.4,1},{11,8,12,8,1.4,1},{14,8,15,8,1.4,1},
+        {5,11,6,11,1.4,1},{8,11,9,11,1.4,1},{11,11,15,11,1.4,1}
+    },
+    ["sparkles"] = {
+        {10,3,10,8,1.4,1},{7.5,5.5,12.5,5.5,1.4,1},
+        {15,10,15,15,1.3,1},{12.5,12.5,17.5,12.5,1.3,1},
+        {6,11,6,16,1.3,1},{3.5,13.5,8.5,13.5,1.3,1}
+    },
+
 }
 
 -- case-insensitive lookup
@@ -572,36 +649,29 @@ for name, data in pairs(Icons) do
 end
 
 local function DrawIconByName(name, x, y, size, color, z, alpha, thickness)
-
-    if string.lower(tostring(name or "")) == "settings" or string.lower(tostring(name or "")) == "gear" then
-        local cx, cy = x + size / 2, y + size / 2
-        local r = math.max(3, size * 0.28)
-        Circle(cx, cy, r, color, z, false, 1.5, 18, alpha)
-        Circle(cx, cy, math.max(1.2, r * 0.34), color, z + 1, false, 1.2, 14, alpha)
-        for i = 0, 7 do
-            local a = i * math.pi / 4
-            local x1 = cx + math.cos(a) * (r + 1)
-            local y1 = cy + math.sin(a) * (r + 1)
-            local x2 = cx + math.cos(a) * (r + 3)
-            local y2 = cy + math.sin(a) * (r + 3)
-            Bar(x1, y1, x2, y2, 1.5, color, z, alpha)
-        end
-        return true
-    end
     if not name then return false end
-    local data = IconIndex[string.lower(name)]
+    local key = string.lower(tostring(name))
+    if key == "settings" then key = "gear" end
+    local data = IconIndex[key]
     if not data then return false end
 
+    -- Icons are authored on a 20x20 grid. Snap endpoints to half pixels so
+    -- thin Drawing lines stay crisp instead of landing between raster pixels.
     local scale = size / 20
-    local defaultThick = thickness or 1.5
+    local defaultThick = thickness or 1.35
     alpha = alpha or 1
 
+    local function snap(v)
+        return math.floor(v * 2 + 0.5) / 2
+    end
+
     for _, seg in ipairs(data) do
-        local x1 = x + seg[1] * scale
-        local y1 = y + seg[2] * scale
-        local x2 = x + seg[3] * scale
-        local y2 = y + seg[4] * scale
-        local thick = (seg[5] or defaultThick) * (size / 20) * 1.15
+        local x1 = snap(x + seg[1] * scale)
+        local y1 = snap(y + seg[2] * scale)
+        local x2 = snap(x + seg[3] * scale)
+        local y2 = snap(y + seg[4] * scale)
+        local authored = seg[5] or defaultThick
+        local thick = math.max(1, math.min(1.75, authored * scale))
         local segA = (seg[6] or 1) * alpha
         Bar(x1, y1, x2, y2, thick, color, z, segA)
     end
@@ -3633,7 +3703,7 @@ Register("ColorPicker", function(parent, opts)
     local self = Base.New("ColorPicker", parent, opts)
     self.Value     = opts.Default or Color3.fromRGB(120, 140, 255)
     self.Callback  = opts.Callback
-    self.Height    = 30
+    self.Height    = 22
 
     self._open     = false
     self._openAnim = 0
@@ -3668,7 +3738,7 @@ Register("ColorPicker", function(parent, opts)
 
     function self:Draw(x, y, w)
         local th = State.Theme
-        local h = Layout.FieldH
+        local h = 16
 
         -- title
         local titleW = 0
@@ -3676,11 +3746,11 @@ Register("ColorPicker", function(parent, opts)
             Text(self.Title, x, TextMidY(y, self.Height, Layout.TextSize),
                  th.Text, Layout.TextSize, FontSystem,
                  51, self.Enabled and 0.92 or 0.4,
-                 w - 60)
+                 w - 44)
         end
 
         -- swatch
-        local swatchW = 34
+        local swatchW = 24
         local swatchX = x + w - swatchW
         local swatchY = y + (self.Height - h) / 2
 
@@ -3704,12 +3774,11 @@ Register("ColorPicker", function(parent, opts)
     function self:_DrawPanel(px, py, pw)
         local th = State.Theme
         local a = self._openAnim
-        local pph = 200
+        local pph = 172
 
-        -- shadow, panel, stroke
-        Rect(px + 2, py + 3, pw, pph, Color3.new(0, 0, 0), 60, 8, 0.28 * a)
+        -- single clean rounded popup frame
         Rect(px, py, pw, pph, th.Base, 61, 8, 0.98 * a)
-        Stroke(px, py, pw, pph, th.Accent, 62, 8, 0.5 * a)
+        Stroke(px, py, pw, pph, th.Stroke, 62, 8, 0.55 * a)
 
         local padX = 10
         local padY = 10
@@ -3718,7 +3787,7 @@ Register("ColorPicker", function(parent, opts)
         local svX = px + padX
         local svY = py + padY
         local svW = pw - padX * 2 - 14
-        local svH = 110
+        local svH = 88
 
         -- base hue color
         local hr, hg, hb = HSVToRGB(self._h, 1, 1)
@@ -3726,17 +3795,16 @@ Register("ColorPicker", function(parent, opts)
 
         -- white -> hue gradient (columns)
         GradientRect(svX, svY, svW, svH,
-                     Color3.new(1, 1, 1), hueColor, 63, a, 24)
+                     Color3.new(1, 1, 1), hueColor, 63, a, 64)
 
         -- black overlay (rows, top transparent -> bottom opaque)
-        local steps = 12
+        local steps = 48
         for i = 1, steps do
             local t = (i - 0.5) / steps
             Rect(svX, svY + svH * (i - 1) / steps,
                  svW, svH / steps + 1,
                  Color3.new(0, 0, 0), 64, 0, t * a)
         end
-        Stroke(svX, svY, svW, svH, th.Stroke, 65, 4, 0.5 * a)
 
         -- cursor
         local cxp = svX + svW * self._s
@@ -3752,7 +3820,7 @@ Register("ColorPicker", function(parent, opts)
         local hueH = 12
 
         -- vertical rainbow
-        local hues = 24
+        local hues = 48
         for i = 1, hues do
             local t = (i - 0.5) / hues
             local r, g, b = HSVToRGB(t, 1, 1)
@@ -3760,7 +3828,6 @@ Register("ColorPicker", function(parent, opts)
             Rect(hueX + (i - 1) * (hueW / hues), hueY, sw, hueH,
                  Color3.new(r, g, b), 63, 0, a)
         end
-        Stroke(hueX, hueY, hueW, hueH, th.Stroke, 65, 3, 0.5 * a)
 
         -- hue marker
         local hueCx = hueX + hueW * self._h
@@ -3774,7 +3841,6 @@ Register("ColorPicker", function(parent, opts)
         local previewW = 42
 
         Rect(previewX, prevY, previewW, prevH, self.Value, 63, 5, self._alpha)
-        Stroke(previewX, prevY, previewW, prevH, th.Text, 64, 5, 0.35)
 
         local r8 = math.floor(self.Value.R * 255 + 0.5)
         local g8 = math.floor(self.Value.G * 255 + 0.5)
@@ -3803,7 +3869,6 @@ Register("ColorPicker", function(parent, opts)
         local alphaCx = alphaX + alphaW * self._alpha
         Rect(alphaCx - 1.5, alphaY - 2, 3, alphaH + 4, th.Text, 66, 1.5, a)
         Rect(alphaCx - 2.5, alphaY - 2, 5, alphaH + 4, Color3.new(0, 0, 0), 66, 2.5, 0.5 * a)
-        Stroke(alphaX, alphaY, alphaW, alphaH, th.Stroke, 65, 2, 0.5 * a)
 
         Text(string.format("%d%%", math.floor(self._alpha * 100 + 0.5)),
              alphaX + alphaW - 30, alphaY + 8,
@@ -3821,8 +3886,8 @@ Register("ColorPicker", function(parent, opts)
 
     function self:Input(x, y, w)
         if not self.Enabled then return end
-        local h = Layout.FieldH
-        local swatchW = 34
+        local h = 16
+        local swatchW = 24
         local swatchX = x + w - swatchW
         local swatchY = y + (self.Height - h) / 2
 
@@ -4198,49 +4263,6 @@ end
 
 
 -- Additional premium global themes.
-Themes["Cyber"] = {
-    Name="Cyber", Bg=rgb(7,10,18), Bg2=rgb(11,16,28), Panel=rgb(12,18,30),
-    Card=rgb(14,21,35), Text=rgb(230,248,255), TextDim=rgb(126,157,177),
-    TextMuted=rgb(86,112,132), Divider=rgb(31,59,78),
-    Accent=rgb(0,229,255), AccentA=rgb(0,229,255), AccentB=rgb(163,73,255),
-    Danger=rgb(255,76,112), Success=rgb(57,230,151)
-}
-Themes["Bubblegum"] = {
-    Name="Bubblegum", Bg=rgb(24,15,29), Bg2=rgb(34,20,40), Panel=rgb(39,23,46),
-    Card=rgb(46,27,54), Text=rgb(255,240,250), TextDim=rgb(213,164,198),
-    TextMuted=rgb(157,111,145), Divider=rgb(91,51,80),
-    Accent=rgb(255,105,180), AccentA=rgb(255,105,180), AccentB=rgb(130,190,255),
-    Danger=rgb(255,86,116), Success=rgb(99,226,169)
-}
-Themes["Emerald"] = {
-    Name="Emerald", Bg=rgb(8,18,16), Bg2=rgb(11,27,23), Panel=rgb(13,32,27),
-    Card=rgb(16,39,33), Text=rgb(232,255,247), TextDim=rgb(137,188,171),
-    TextMuted=rgb(91,137,122), Divider=rgb(32,75,62),
-    Accent=rgb(55,232,154), AccentA=rgb(55,232,154), AccentB=rgb(77,199,255),
-    Danger=rgb(255,91,109), Success=rgb(55,232,154)
-}
-Themes["Crimson"] = {
-    Name="Crimson", Bg=rgb(20,9,12), Bg2=rgb(31,12,17), Panel=rgb(37,14,20),
-    Card=rgb(45,17,24), Text=rgb(255,239,241), TextDim=rgb(203,151,158),
-    TextMuted=rgb(148,98,106), Divider=rgb(83,34,43),
-    Accent=rgb(255,70,92), AccentA=rgb(255,70,92), AccentB=rgb(255,144,74),
-    Danger=rgb(255,70,92), Success=rgb(84,222,148)
-}
-Themes["Arctic"] = {
-    Name="Arctic", Bg=rgb(10,17,25), Bg2=rgb(14,25,36), Panel=rgb(17,31,44),
-    Card=rgb(20,37,52), Text=rgb(239,250,255), TextDim=rgb(153,188,207),
-    TextMuted=rgb(102,139,159), Divider=rgb(43,74,93),
-    Accent=rgb(115,210,255), AccentA=rgb(115,210,255), AccentB=rgb(174,147,255),
-    Danger=rgb(255,100,125), Success=rgb(94,224,170)
-}
-Themes["Sunset"] = {
-    Name="Sunset", Bg=rgb(24,13,17), Bg2=rgb(36,18,23), Panel=rgb(42,21,27),
-    Card=rgb(50,25,32), Text=rgb(255,242,235), TextDim=rgb(215,166,151),
-    TextMuted=rgb(158,112,101), Divider=rgb(91,50,46),
-    Accent=rgb(255,132,74), AccentA=rgb(255,132,74), AccentB=rgb(255,79,151),
-    Danger=rgb(255,77,102), Success=rgb(102,224,151)
-}
-
 local function SetThemeByName(name)
     for i, th in ipairs(Themes) do
         if th.Name == name then
@@ -5072,7 +5094,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v35.1-THEMED-SETTINGS-FIX"
+Library.Version       = "v36-THEMES-COLOR-ICONS"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5258,7 +5280,7 @@ end)
 
 
 
-Library.Version = "v35.1-THEMED-SETTINGS-FIX"
+Library.Version = "v36-THEMES-COLOR-ICONS"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
