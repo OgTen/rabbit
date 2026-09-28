@@ -2419,106 +2419,45 @@ local TitleButtons = {
 
 local function DrawTitleBar(title, subtitle)
     local th = State.Theme
-    local cy = State.Y + Layout.TopbarH / 2
 
-    -- Product-style command header: compact brand identity on the left,
-    -- contextual status on the right, rather than a generic centered title.
-    local logoSize = math.min(State.LogoSize or 30, Layout.TopbarH - 12)
-    local brandX = State.X + 12
-    local logoY = State.Y + (Layout.TopbarH - logoSize) / 2
+    -- Floating title island. It is centered over the content workspace rather
+    -- than the full window so the detached sidebar does not visually pull it left.
+    local railW = Geometry.RailW or Layout.TabRailNarrow
+    local contentLeft = State.X + railW
+    local contentW = math.max(1, State.W - railW)
 
-    if State.Logo then
-        DrawPicture(State.Logo, brandX, logoY,
-                    logoSize, logoSize, Layer(35), FrameAlpha, 7)
-    else
-        Rect(brandX, logoY, logoSize, logoSize,
-             th.Accent, 34, 7, 0.10)
-        Stroke(brandX, logoY, logoSize, logoSize,
-               th.Accent, 35, 7, 0.45)
-    end
+    local islandText = string.upper(tostring(title or "SHADOW UI"))
+    local islandTextSize = 11
+    local islandPadX = 24
+    local islandW = Clamp(TextWidth(islandText, islandTextSize, Fonts.SystemBold) + islandPadX * 2,
+                          132, 184)
+    local islandH = 28
+    local islandX = contentLeft + (contentW - islandW) * 0.5
+    local islandY = State.Y + (Layout.TopbarH - islandH) * 0.5
 
-    local textX = brandX + logoSize + 10
-    local titleSize = 13
-    local subSize = 8
-    local titleY = State.Y + 8
-    local subY = State.Y + 25
+    FrostedSurface(islandX, islandY, islandW, islandH,
+                   th.Panel, 31, 10)
+    Stroke(islandX, islandY, islandW, islandH,
+           th.Stroke, 32, 10, 0.52)
 
-    Text(title, textX, titleY, th.Text,
-         titleSize, Fonts.SystemBold, 35, 0.99,
-         math.max(1, State.W * 0.42))
+    -- Very restrained accent edge: enough identity to make the island feel
+    -- intentional without turning it into another busy toolbar.
+    GradientRect(islandX + 12, islandY + islandH - 1,
+                 math.max(1, islandW - 24), 1,
+                 th.AccentA, th.AccentB, 33, 0.34)
 
-    local sub = tostring(subtitle or "")
-    if sub ~= "" then
-        Text(string.upper(sub), textX, subY, th.TextDim,
-             subSize, Fonts.System, 35, 0.76,
-             math.max(1, State.W * 0.38))
-    end
+    Text(islandText,
+         islandX + islandPadX,
+         TextMidY(islandY, islandH, islandTextSize),
+         th.Text, islandTextSize, Fonts.SystemBold,
+         34, 0.98, math.max(1, islandW - islandPadX * 2))
 
-    -- Small live identity capsule. It gives the header a useful secondary
-    -- anchor without competing with the main title.
-    local closeSize = TitleButtons.Close.Size
-    local closeX = State.X + State.W - closeSize - 9
-    local closeY = cy - closeSize / 2
-    TitleButtons.Close.X = closeX
-    TitleButtons.Close.Y = closeY
-
-    local statusText = string.upper(tostring(State.Theme.Name or "SHADOW"))
-    local statusSize = 8
-    local statusTextW = TextWidth(statusText, statusSize, Fonts.SystemBold)
-    local pillW = math.min(108, math.max(58, statusTextW + 28))
-    local pillH = 22
-    local pillX = closeX - pillW - 10
-    local pillY = cy - pillH / 2
-
-    Rect(pillX, pillY, pillW, pillH,
-         th.Panel, 31, 7, 0.72)
-    Stroke(pillX, pillY, pillW, pillH,
-           th.Stroke, 32, 7, 0.62)
-    Circle(pillX + 11, cy, 2.6,
-           th.Accent, 33, true, 1, 12, 0.95)
-    Text(statusText,
-         pillX + 19,
-         TextMidY(pillY, pillH, statusSize),
-         th.TextDim, statusSize, Fonts.SystemBold,
-         34, 0.88, pillW - 24)
-
-    local closeHover = MouseIn(closeX, closeY, closeSize, closeSize)
-    Rect(closeX, closeY, closeSize, closeSize,
-         closeHover and th.Danger or th.Panel,
-         30, 7, closeHover and 0.16 or 0.42)
-    Stroke(closeX, closeY, closeSize, closeSize,
-           closeHover and th.Danger or th.Stroke,
-           31, 7, closeHover and 0.55 or 0.52)
-
-    local closeColor = closeHover and th.Danger or th.TextDim
-    local cxi = closeX + closeSize / 2
-    local cyi = closeY + closeSize / 2
-    local cross = 4.5
-    Bar(cxi - cross, cyi - cross, cxi + cross, cyi + cross,
-        1.55, closeColor, 32, closeHover and 1 or 0.78)
-    Bar(cxi + cross, cyi - cross, cxi - cross, cyi + cross,
-        1.55, closeColor, 32, closeHover and 1 or 0.78)
-
-    -- Quiet baseline separates the command header from workspace content.
-    GradientRect(State.X + 12, State.Y + Layout.TopbarH - 1,
-                 math.max(1, State.W - 24), 1,
-                 th.AccentA, th.AccentB, 29, 0.16)
-
-    if closeHover and Input.Click then
-        State.Open = false
+    -- There is intentionally no close button. The configured menu key controls
+    -- showing/hiding Shadow UI, leaving the entire top strip available to drag.
+    if MouseIn(State.X, State.Y, State.W, Layout.TopbarH)
+       and Input.Click and not State.Drag then
+        BeginDrag()
         Input.Click = false
-        return
-    end
-
-    local barHover = MouseIn(State.X, State.Y, State.W, Layout.TopbarH)
-    if barHover and Input.Click and not State.Drag then
-        local exclude = PointInRect(Input.X, Input.Y,
-                                    closeX, closeY,
-                                    closeSize, closeSize)
-        if not exclude then
-            BeginDrag()
-            Input.Click = false
-        end
     end
 end
 
@@ -2608,7 +2547,34 @@ local function DrawTabRail()
     Stroke(sectionX, sectionY, sectionW, sectionH,
            th.Stroke, 37, 12, 0.42)
 
-    local rowY = sectionY + 11
+    -- The logo remains the sidebar's visual anchor, but branding text stays
+    -- in the floating island. A larger logo gives the rail identity without
+    -- consuming enough vertical space to noticeably push the tab list down.
+    local brandH = 49
+    local brandLogoSize = 38
+    local brandLogoX = sectionX + (sectionW - brandLogoSize) * 0.5
+    local brandLogoY = sectionY + 6
+
+    if State.Logo then
+        DrawPicture(State.Logo, brandLogoX, brandLogoY,
+                    brandLogoSize, brandLogoSize,
+                    Layer(40), FrameAlpha, 8)
+    else
+        Rect(brandLogoX, brandLogoY,
+             brandLogoSize, brandLogoSize,
+             th.Accent, 40, 8, 0.10)
+        Stroke(brandLogoX, brandLogoY,
+               brandLogoSize, brandLogoSize,
+               th.Accent, 41, 8, 0.42)
+    end
+
+    -- A short divider keeps the logo visually separated from navigation while
+    -- remaining lighter than the old branding block.
+    Line(sectionX + 13, sectionY + brandH,
+         sectionX + sectionW - 13, sectionY + brandH,
+         th.Stroke, 39, 1, 0.26)
+
+    local rowY = sectionY + brandH + 7
     local padX = 8
     local rowH = Layout.TabRowH
     local tabGap = Layout.TabGap
@@ -3308,10 +3274,12 @@ local function IsSection(row)
 end
 
 local function GetSectionHeaderHeight(section)
+    -- Header now lives inside the section card: top padding + title +
+    -- optional description + separator breathing room.
     if section.Description and section.Description ~= "" then
-        return Layout.SectionTitleH + Layout.SectionDescH + 4
+        return Layout.SectionTitleH + Layout.SectionDescH + 17
     end
-    return Layout.SectionTitleH + 4
+    return Layout.SectionTitleH + 15
 end
 
 local function TickSection(section)
@@ -3377,14 +3345,9 @@ local function DrawSection(section, x, y, w)
     TickSection(section)
 
     local headerH = GetSectionHeaderHeight(section)
-    local panelY = y + headerH
-
-    -- Calculate the full panel height separately from the animated visible height.
-    local fullH = MeasureSection(section, w)
     local collapse = Clamp(section._collapse or 0, 0, 1)
-    local panelH = math.max(0, fullH - headerH)
 
-    -- Reconstruct the uncollapsed panel height for clipping/reveal calculations.
+    -- Reconstruct the uncollapsed content height.
     local contentH = 0
     for _, child in ipairs(section.Rows or {}) do
         if not child.Hidden then
@@ -3401,58 +3364,90 @@ local function DrawSection(section, x, y, w)
         end
     end
     if contentH > 0 then contentH = contentH - Layout.RowGapY end
-    local fullPanelH = Layout.SectionPadY + math.max(Layout.RowHeight, contentH) + Layout.SectionPadY
-    local visiblePanelH = math.max(0, fullPanelH * (1 - collapse))
+
+    local fullContentH = Layout.SectionPadY + math.max(Layout.RowHeight, contentH) + Layout.SectionPadY
+    local visibleContentH = math.max(0, fullContentH * (1 - collapse))
+    local totalH = headerH + visibleContentH
 
     section._layoutX = x
     section._layoutY = y
     section._layoutW = w
-    section._layoutH = headerH + visiblePanelH
+    section._layoutH = totalH
 
     local viewportTop = ActiveClipTop or -math.huge
     local viewportBottom = ActiveClipBottom or math.huge
+    local clippedTop = math.max(y, viewportTop)
+    local clippedBottom = math.min(y + totalH, viewportBottom)
+    local clippedH = math.max(0, clippedBottom - clippedTop)
+    if clippedH <= 0 then return end
+
+    -- One continuous frosted card contains both section identity and controls.
+    local fullCardVisible = clippedTop == y and clippedBottom == y + totalH
+    FrostedSurface(x, clippedTop, w, clippedH,
+                   State.Theme.Panel, 40,
+                   fullCardVisible and Layout.SectionCorner or 0)
+    Stroke(x, clippedTop, w, clippedH,
+           State.Theme.Stroke, 41,
+           fullCardVisible and Layout.SectionCorner or 0, 0.42)
+
     local headerVisible = (y >= viewportTop and y + headerH <= viewportBottom)
-
-    -- Matcha has no native scissor rectangle. Crop section surfaces to the
-    -- viewport and reveal/hide child primitives individually as they cross it.
-    local clippedPanelTop = math.max(panelY, viewportTop)
-    local clippedPanelBottom = math.min(panelY + visiblePanelH, viewportBottom)
-    local clippedPanelH = math.max(0, clippedPanelBottom - clippedPanelTop)
-    local panelVisible = clippedPanelH > 0
-    if not headerVisible and not panelVisible then return end
-
     if headerVisible then
-        local arrow = collapse > 0.5 and ">" or "v"
-        Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, Fonts.SystemBold, 50, 0.9, 10)
+        local titleX = x + Layout.SectionPadX
+        local chevronCX = x + w - Layout.SectionPadX - 7
+        local chevronCY = y + math.floor(headerH * 0.43)
 
-        Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, Fonts.SystemBold,
-             50, 0.98, math.max(1, w - 14))
+        Text(section.Title,
+             titleX, y + 7,
+             State.Theme.Text, Layout.TitleSize,
+             Fonts.SystemBold, 50, 0.98,
+             math.max(1, chevronCX - titleX - 16))
 
         if section.Description and section.Description ~= "" then
-            Text(section.Description, x + 14, y + Layout.SectionTitleH,
-                 State.Theme.TextDim, Layout.SmallSize, Fonts.System, 50, 0.72, math.max(1, w - 14))
+            Text(section.Description,
+                 titleX, y + 7 + Layout.SectionTitleH,
+                 State.Theme.TextDim, Layout.SmallSize,
+                 Fonts.System, 50, 0.72,
+                 math.max(1, chevronCX - titleX - 16))
+        end
+
+        -- Animated drawn chevron. collapse=0 points down; collapse=1 points
+        -- right, so the affordance follows the existing collapse tween.
+        local arm = 4.2
+        local downLX, downLY = chevronCX - arm, chevronCY - 2
+        local downRX, downRY = chevronCX + arm, chevronCY - 2
+        local downMX, downMY = chevronCX, chevronCY + 2.5
+        local rightLX, rightLY = chevronCX - 2, chevronCY - arm
+        local rightRX, rightRY = chevronCX - 2, chevronCY + arm
+        local rightMX, rightMY = chevronCX + 2.5, chevronCY
+
+        local ax = downLX + (rightLX - downLX) * collapse
+        local ay = downLY + (rightLY - downLY) * collapse
+        local bx = downMX + (rightMX - downMX) * collapse
+        local by = downMY + (rightMY - downMY) * collapse
+        local cx = downRX + (rightRX - downRX) * collapse
+        local cy = downRY + (rightRY - downRY) * collapse
+
+        Bar(ax, ay, bx, by, 1.45, State.Theme.Accent, 51, 0.88)
+        Bar(bx, by, cx, cy, 1.45, State.Theme.Accent, 51, 0.88)
+
+        -- Fade the separator with the section content so a fully collapsed
+        -- section leaves only the clean header card.
+        local separatorAlpha = 0.46 * (1 - collapse)
+        if separatorAlpha > 0.01 then
+            Line(x + Layout.SectionPadX, y + headerH - 1,
+                 x + w - Layout.SectionPadX, y + headerH - 1,
+                 State.Theme.Stroke, 49, 1, separatorAlpha)
         end
     end
 
     if collapse >= 0.985 then return end
 
-    if panelVisible then
-        -- Draw only the visible slice. This makes the section move through the
-        -- viewport like a normal page instead of disappearing as one block.
-        local clippedCorner = (clippedPanelTop == panelY and
-                               clippedPanelBottom == panelY + visiblePanelH)
-                               and Layout.SectionCorner or 0
-        FrostedSurface(x, clippedPanelTop, w, clippedPanelH,
-                       State.Theme.Panel, 40, clippedCorner)
-        Stroke(x, clippedPanelTop, w, clippedPanelH,
-               State.Theme.Stroke, 41, clippedCorner, 0.42)
-    end
-
+    local panelY = y + headerH
     local innerX = x + Layout.SectionPadX
     local innerY = panelY + Layout.SectionPadY
     local innerW = math.max(1, w - Layout.SectionPadX * 2)
     local cy = innerY
-    local contentBottom = math.min(panelY + visiblePanelH - Layout.SectionPadY,
+    local contentBottom = math.min(panelY + visibleContentH - Layout.SectionPadY,
                                    viewportBottom - Layout.SectionPadY)
 
     for _, child in ipairs(section.Rows or {}) do
@@ -3461,7 +3456,9 @@ local function DrawSection(section, x, y, w)
             if getmetatable(child) == InlineRow then
                 estimatedH = Layout.RowHeight
                 for _, ctrl in ipairs(child.Cells or {}) do
-                    if not ctrl.Hidden then estimatedH = math.max(estimatedH, ctrl.Height or Layout.RowHeight) end
+                    if not ctrl.Hidden then
+                        estimatedH = math.max(estimatedH, ctrl.Height or Layout.RowHeight)
+                    end
                 end
             end
 
@@ -3478,6 +3475,7 @@ local function DrawSection(section, x, y, w)
                     h = DrawRow(child, innerX, cy, innerW)
                 end
             end
+
             cy = cy + (h or Layout.RowHeight) + Layout.RowGapY
         end
     end
@@ -6298,7 +6296,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.9.1-REGISTER-FIX"
+Library.Version       = "v46.11-FLOATING-ISLAND-HEADER"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6499,7 +6497,7 @@ end)
 
 
 
-Library.Version = "v46.9.1-REGISTER-FIX"
+Library.Version = "v46.11-FLOATING-ISLAND-HEADER"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
