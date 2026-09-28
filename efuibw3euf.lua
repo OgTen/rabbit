@@ -758,30 +758,44 @@ local function ReadInput()
     PrevMouseState.R = r
     PrevMouseState.M = m
 
-    -- wheel: executors expose this differently. Try common names.
+    -- Wheel APIs vary between executors. Prefer event/delta-style values;
+    -- fall back to a cumulative counter only when the value clearly behaves
+    -- like one. Keyboard PageUp/PageDown is handled by HandleWheel as well.
     local wheel = 0
+    local gotWheel = false
+
+    local function acceptWheel(value)
+        value = tonumber(value)
+        if value ~= nil and value ~= 0 then
+            wheel = value
+            gotWheel = true
+        end
+    end
 
     pcall(function()
-        if mousewheel then
-            local value = tonumber(mousewheel())
-            if value ~= nil then
-                wheel = value
-            end
-        end
+        if mousewheel then acceptWheel(mousewheel()) end
     end)
+    if not gotWheel then
+        pcall(function()
+            if getwheel then acceptWheel(getwheel()) end
+        end)
+    end
+    if not gotWheel then
+        pcall(function()
+            if Mouse and Mouse.WheelDelta ~= nil then acceptWheel(Mouse.WheelDelta) end
+        end)
+    end
 
-    pcall(function()
-        if getwheel then
-            local value = tonumber(getwheel())
-            if value ~= nil then
-                wheel = value
-            end
-        end
-    end)
+    -- Most Matcha-style wheel functions expose a signed per-frame delta.
+    -- Clamp large values so one wheel notch cannot fling through a page.
+    if wheel > 0 then
+        Input.Wheel = math.min(wheel, 3)
+    elseif wheel < 0 then
+        Input.Wheel = math.max(wheel, -3)
+    else
+        Input.Wheel = 0
+    end
 
-    local previousWheel = tonumber(PrevWheel) or 0
-    Input.Wheel = wheel - previousWheel
-    PrevWheel = wheel
 end
 
 local function MouseIn(x, y, w, h)
@@ -1279,6 +1293,57 @@ local function ApplyThemeOptions(themeOption)
     State.ThemeIndex = 0
 end
 
+-- Best-effort Roblox game-input sink while the Shadow UI menu is open.
+-- Everything is protected so executors that restrict game services continue
+-- to run normally rather than breaking the UI.
+local GameInputBlocked = false
+local InputSinkBound = false
+local InputSinkName = "ShadowUI_InputSink"
+
+local function SetGameInputBlocked(blocked)
+    blocked = blocked and true or false
+    if blocked == GameInputBlocked then return end
+    GameInputBlocked = blocked
+
+    pcall(function()
+        local gameObj = game
+        if not gameObj or not gameObj.GetService then return end
+        local CAS = gameObj:GetService("ContextActionService")
+        if not CAS then return end
+
+        if blocked then
+            if InputSinkBound then return end
+            local EnumObj = Enum
+            if not EnumObj or not EnumObj.ContextActionResult
+               or not EnumObj.UserInputType then return end
+
+            local function sink()
+                return EnumObj.ContextActionResult.Sink
+            end
+
+            CAS:BindActionAtPriority(
+                InputSinkName,
+                sink,
+                false,
+                10000,
+                EnumObj.UserInputType.Keyboard,
+                EnumObj.UserInputType.MouseButton1,
+                EnumObj.UserInputType.MouseButton2,
+                EnumObj.UserInputType.MouseButton3,
+                EnumObj.UserInputType.MouseWheel,
+                EnumObj.UserInputType.Gamepad1
+            )
+            InputSinkBound = true
+        else
+            if InputSinkBound then
+                CAS:UnbindAction(InputSinkName)
+                InputSinkBound = false
+            end
+        end
+    end)
+end
+
+
 -- ============================================================================
 --  PART 2 COMPLETE
 --  Next: PART 3 -- layout engine, scroll, resize handle, window frame,
@@ -1476,8 +1541,22 @@ local function HandleWheel(tab)
     if not tab then return end
     if not MouseIn(Geometry.ContentX, Geometry.ContentY,
                    Geometry.ContentW, Geometry.ContentH) then return end
-    if Input.Wheel == 0 then return end
-    tab.ScrollTo = tab.ScrollTo - Input.Wheel * Layout.ScrollSpeed
+
+    local delta = Input.Wheel or 0
+    local pgUp = Keys.PageUp and Keys.PageUp.Click
+    local pgDn = Keys.PageDown and Keys.PageDown.Click
+
+    if delta ~= 0 then
+        tab.ScrollTo = tab.ScrollTo - delta * Layout.ScrollSpeed
+        Input.Wheel = 0
+    elseif pgUp then
+        tab.ScrollTo = tab.ScrollTo - math.max(80, Geometry.ContentH * 0.65)
+    elseif pgDn then
+        tab.ScrollTo = tab.ScrollTo + math.max(80, Geometry.ContentH * 0.65)
+    else
+        return
+    end
+
     tab.ScrollTo = Clamp(tab.ScrollTo, 0, tab.MaxScroll or 0)
 end
 
@@ -2057,46 +2136,18 @@ local function DrawTitleBar(title, subtitle)
     Bar(cxi - s, cyi - s, cxi + s, cyi + s, 1.6, closeColor, 32, closeHover and 1 or 0.8)
     Bar(cxi + s, cyi - s, cxi - s, cyi + s, 1.6, closeColor, 32, closeHover and 1 or 0.8)
 
-    local menuSize = TitleButtons.Menu.Size
-    local menuX = closeX - menuSize - 6
-    local menuY = cy - menuSize / 2
-    TitleButtons.Menu.X = menuX
-    TitleButtons.Menu.Y = menuY
-
-    local menuHover = MouseIn(menuX, menuY, menuSize, menuSize)
-    if menuHover then
-        Rect(menuX, menuY, menuSize, menuSize,
-             th.Accent, 30, 6, 0.14)
-        Stroke(menuX, menuY, menuSize, menuSize,
-               th.Accent, 31, 6, 0.46)
-    end
-
-    local menuColor = menuHover and th.Accent or th.TextDim
-    local mxi = menuX + menuSize / 2
-    local myi = menuY + menuSize / 2
-    for i = -1, 1 do
-        Bar(mxi - 5, myi + i * 4, mxi + 5, myi + i * 4,
-            1.4, menuColor, 32, menuHover and 1 or 0.72)
-    end
-
     if closeHover and Input.Click then
         State.Open = false
+        SetGameInputBlocked(false)
         Input.Click = false
         return
     end
 
-    if menuHover and Input.Click then
-        State.RailPinned = not State.RailPinned
-        Input.Click = false
-        return
-    end
 
     local barHover = MouseIn(State.X, State.Y, State.W, Layout.TopbarH)
     if barHover and Input.Click and not State.Drag then
         local exclude =
-            PointInRect(Input.X, Input.Y, closeX, closeY, closeSize, closeSize) or
-            PointInRect(Input.X, Input.Y, menuX, menuY, menuSize, menuSize) or
-            PointInRect(Input.X, Input.Y, keyX, keyY, keySize, keySize)
+            PointInRect(Input.X, Input.Y, closeX, closeY, closeSize, closeSize)
         if not exclude then
             BeginDrag()
             Input.Click = false
@@ -4609,6 +4660,7 @@ end
 
 local function ToggleUI()
     State.Open = not State.Open
+    SetGameInputBlocked(State.Open and not State.Startup.Active)
     if not State.Open then
         ClearFocus()
         CancelCapture()
@@ -4663,6 +4715,7 @@ local function Render()
     TickVisibility(State.Delta)
     TickTheme(State.Delta)
     TickStartup(State.Delta)
+    SetGameInputBlocked(State.Open and not State.Startup.Active and State.Visible > 0.05)
 
     local startupIsLoading = State.Startup.Active and State.Startup.Phase == "loading"
     local startupIsShrink = State.Startup.Active and State.Startup.Phase == "shrink"
@@ -4818,11 +4871,11 @@ local function CollectKeybinds()
             elseif getmetatable(row) == InlineRow then
                 for _, ctrl in ipairs(row.Cells or {}) do
                     if ctrl.Kind == "Keybind" then
-                        out[#out + 1] = { Path = prefix .. (ctrl.Title ~= "" and ctrl.Title or "Keybind"), Row = ctrl }
+                        out[#out + 1] = { Path = prefix .. (ctrl.Title ~= "" and ctrl.Title or "Keybind"), Title = (ctrl.Title ~= "" and ctrl.Title or "Keybind"), Row = ctrl }
                     end
                 end
             elseif row.Kind == "Keybind" then
-                out[#out + 1] = { Path = prefix .. (row.Title ~= "" and row.Title or "Keybind"), Row = row }
+                out[#out + 1] = { Path = prefix .. (row.Title ~= "" and row.Title or "Keybind"), Title = (row.Title ~= "" and row.Title or "Keybind"), Row = row }
             end
         end
     end
@@ -4858,6 +4911,12 @@ end
 
 UpdateKeybindOverlayInput = function()
     if State.Settings and State.Settings.KeybindOverlay == false then return end
+    -- The overlay remains visible while the menu is hidden, but it is only
+    -- interactive/draggable while the main Shadow UI window is open.
+    if not State.Open or State.Visible < 0.50 then
+        KeybindHUD.Dragging = false
+        return
+    end
     local x, y, w, h = GetKeybindOverlayGeometry()
     local hover = MouseIn(x, y, w, h)
 
@@ -4894,7 +4953,9 @@ DrawKeybindOverlay = function()
     Stroke(x, y, w, h, th.Accent, 332, 9, 0.88)
 
     Text("KEYBINDS", x + 14, y + 10, th.Text, 12, FontBold, 334, 1)
-    Text("drag", x + w - 36, y + 12, th.TextDim, 8, FontSystem, 334, 0.55)
+    if State.Open and State.Visible >= 0.50 then
+        Text("drag", x + w - 36, y + 12, th.TextDim, 8, FontSystem, 334, 0.55)
+    end
 
     Line(x + 12, y + headerH - 1, x + w - 12, y + headerH - 1,
          th.Accent, 334, 1, 0.14)
@@ -4909,11 +4970,14 @@ DrawKeybindOverlay = function()
 
     for i = 1, math.min(#list, 8) do
         local entry = list[i]
-        local title = entry.Path or "Keybind"
+        local title = entry.Title or "Keybind"
         local value = string.upper(tostring(entry.Row and entry.Row.Value or "NONE"))
-        local valueW = TextWidth(value, 10, FontMono)
-        local pillW = math.max(30, valueW + 14)
+        local keySize = 12
+        local valueW = TextWidth(value, keySize, FontBold)
+        local pillW = math.max(36, valueW + 18)
+        local pillH = 20
         local pillX = x + w - pillW - 12
+        local pillY = rowY + (rowH - pillH) / 2
 
         if i > 1 then
             Line(x + 14, rowY, x + w - 14, rowY,
@@ -4924,10 +4988,12 @@ DrawKeybindOverlay = function()
         Text(title, x + 14, rowY + 7, th.Text, 10, FontSystem,
              336, 0.94, titleMax)
 
-        Rect(pillX, rowY + 6, pillW, 17, th.Accent, 337, 4, 0.10)
-        Stroke(pillX, rowY + 6, pillW, 17, th.Accent, 338, 4, 0.30)
-        Text(value, pillX + (pillW - valueW) / 2, rowY + 8,
-             th.Accent, 10, FontMono, 339, 1, valueW + 2)
+        Rect(pillX, pillY, pillW, pillH, th.Accent, 337, 5, 0.13)
+        Stroke(pillX, pillY, pillW, pillH, th.Accent, 338, 5, 0.42)
+        Text(value,
+             pillX + (pillW - valueW) / 2,
+             TextMidY(pillY, pillH, keySize),
+             th.Accent, keySize, FontBold, 339, 1, valueW + 2)
 
         rowY = rowY + rowH
     end
@@ -5093,7 +5159,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v36.1-SYNTAX-FIX"
+Library.Version       = "v37-INPUT-OVERLAY-SCROLL"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5279,7 +5345,7 @@ end)
 
 
 
-Library.Version = "v36.1-SYNTAX-FIX"
+Library.Version = "v37-INPUT-OVERLAY-SCROLL"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
