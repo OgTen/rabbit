@@ -5091,8 +5091,11 @@ DrawKeybindOverlay = function()
     local headerSize = 12
     local headerW = TextWidth(header, headerSize, FontBold)
     Text(header, x + (w - headerW) / 2,
-         TextMidY(y, headerH, headerSize),
+         TextMidY(y, headerH, headerSize) - 2,
          th.Text, headerSize, FontBold, 334, 1, headerW + 2)
+
+    Line(x + 10, y + headerH - 1, x + w - 10, y + headerH - 1,
+         th.Accent, 334, 1, 0.22)
 
     local rowY = y + headerH
     if #list == 0 then
@@ -5241,8 +5244,11 @@ DrawPerformanceOverlay = function()
     local headerSize = 12
     local headerW = TextWidth(header, headerSize, FontBold)
     Text(header, x + (w - headerW) / 2,
-         TextMidY(y, headerH, headerSize),
+         TextMidY(y, headerH, headerSize) - 2,
          th.Text, headerSize, FontBold, 344, 1, headerW + 2)
+
+    Line(x + 10, y + headerH - 1, x + w - 10, y + headerH - 1,
+         th.Accent, 344, 1, 0.22)
 
     local rowY = y + headerH
     local valueX = x + 12 + labelW + 18
@@ -5394,19 +5400,6 @@ function Library:CreateWindow(opts)
     if opts.MenuKey or opts.menuKey then State.MenuKey = string.lower(tostring(opts.MenuKey or opts.menuKey)) end
     if opts.NoAnim ~= nil or opts.noAnim ~= nil then State.NoAnim = (opts.NoAnim ~= nil and opts.NoAnim or opts.noAnim) and true or false end
     if opts.Background ~= nil or opts.background ~= nil then State.Background = NormalizeBackground(opts.Background or opts.background) end
-    local hotkeyOverlayOption = opts.KeybindOverlay
-    if hotkeyOverlayOption == nil then hotkeyOverlayOption = opts.keybindOverlay end
-    if hotkeyOverlayOption == nil then hotkeyOverlayOption = opts.HotkeyOverlay end
-    if hotkeyOverlayOption == nil then hotkeyOverlayOption = opts.hotkeyOverlay end
-    if hotkeyOverlayOption ~= nil then
-        State.Settings.KeybindOverlay = hotkeyOverlayOption and true or false
-    end
-
-    local performanceOverlayOption = opts.PerformanceOverlay
-    if performanceOverlayOption == nil then performanceOverlayOption = opts.performanceOverlay end
-    if performanceOverlayOption ~= nil then
-        State.Settings.PerformanceOverlay = performanceOverlayOption and true or false
-    end
     local themeOption = opts.Theme or opts.theme
     if themeOption ~= nil then
         if type(themeOption) == "string" then
@@ -5429,7 +5422,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v40.1-PERFORMANCE-SCOPE-FIX"
+Library.Version       = "v41-OVERLAY-POLISH-UNCAPPED"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5617,13 +5610,13 @@ task.spawn(function()
         if not ok then
             warn("[Library] render error:", tostring(err))
         end
-        task.wait(1 / 60)
+        task.wait()
     end
 end)
 
 
 
-Library.Version = "v40.1-PERFORMANCE-SCOPE-FIX"
+Library.Version = "v41-OVERLAY-POLISH-UNCAPPED"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
