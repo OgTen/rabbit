@@ -3552,9 +3552,10 @@ end)
 Register("Dropdown", function(parent, opts)
     opts = opts or {}
     local self = Base.New("Dropdown", parent, opts)
-    self.Options  = opts.Options or {}
-    self.Value    = opts.Default or (self.Options[1])
-    self.Callback = opts.Callback
+    self.Options  = opts.Options or opts.options or {}
+    self.Multi    = (opts.Multi == true or opts.multi == true or
+                     opts.MultiSelect == true or opts.multiSelect == true)
+    self.Callback = opts.Callback or opts.callback
     self.Height   = 32
 
     self._open = false
@@ -3563,16 +3564,137 @@ Register("Dropdown", function(parent, opts)
     self._listScrollTo = 0
     self._scrollDrag = false
     self._scrollDragOffsetY = 0
+    self._popupGeom = nil
 
-    function self:GetValue() return self.Value end
+    local function CopyArray(value)
+        local out = {}
+        if type(value) == "table" then
+            for _, v in ipairs(value) do out[#out + 1] = v end
+        end
+        return out
+    end
+
+    local function Contains(list, value)
+        for _, v in ipairs(list or {}) do
+            if v == value then return true end
+        end
+        return false
+    end
+
+    local default = opts.Default
+    if default == nil then default = opts.default end
+
+    if self.Multi then
+        self.Value = CopyArray(default)
+    else
+        self.Value = default
+        if self.Value == nil then self.Value = self.Options[1] end
+    end
+
+    function self:GetValue()
+        if self.Multi then return CopyArray(self.Value) end
+        return self.Value
+    end
 
     function self:SetValue(v, silent)
+        if self.Multi then
+            local nextValue = CopyArray(v)
+            self.Value = nextValue
+            if not silent then
+                local emitted = CopyArray(nextValue)
+                if self.Callback then pcall(self.Callback, emitted) end
+                self:_Fire(emitted)
+            end
+            return
+        end
+
         if self.Value == v then return end
         self.Value = v
         if not silent then
             if self.Callback then pcall(self.Callback, v) end
             self:_Fire(v)
         end
+    end
+
+    function self:_ToggleOption(option)
+        if not self.Multi then
+            self:SetValue(option)
+            self._open = false
+            return
+        end
+
+        local nextValue = CopyArray(self.Value)
+        local found = nil
+        for i, v in ipairs(nextValue) do
+            if v == option then found = i break end
+        end
+        if found then
+            table.remove(nextValue, found)
+        else
+            nextValue[#nextValue + 1] = option
+        end
+        self:SetValue(nextValue)
+    end
+
+    function self:_DisplayValue()
+        if not self.Multi then return tostring(self.Value or "-") end
+        if #self.Value == 0 then return "None" end
+        local parts = {}
+        for _, v in ipairs(self.Value) do parts[#parts + 1] = tostring(v) end
+        return table.concat(parts, ", ")
+    end
+
+    local function FitText(text, maxW, size, font)
+        text = tostring(text or "")
+        maxW = math.max(1, maxW or 1)
+        if TextWidth(text, size, font) <= maxW then return text end
+
+        local dots = "..."
+        local dotsW = TextWidth(dots, size, font)
+        if dotsW >= maxW then return "" end
+
+        local lo, hi = 0, #text
+        while lo < hi do
+            local mid = math.ceil((lo + hi) / 2)
+            local candidate = string.sub(text, 1, mid) .. dots
+            if TextWidth(candidate, size, font) <= maxW then
+                lo = mid
+            else
+                hi = mid - 1
+            end
+        end
+        return string.sub(text, 1, lo) .. dots
+    end
+
+    function self:_BuildPopupGeometry(fieldX, fieldY, fieldW, h)
+        local rowH = 22
+        local maxVisible = 8
+        local visible = math.min(#self.Options, maxVisible)
+        local listH = visible * rowH + 8
+
+        -- One canonical on-screen rectangle is used by drawing AND input.
+        -- Clamp horizontally into the content viewport when the window shrinks.
+        local minX = Geometry.ContentX + 4
+        local maxRight = Geometry.ContentX + Geometry.ContentW - 4
+        local popupW = math.max(70, math.min(fieldW, math.max(70, maxRight - minX)))
+        local popupX = Clamp(fieldX, minX, math.max(minX, maxRight - popupW))
+        local popupY = fieldY + h + 3
+
+        local maxScroll = math.max(0, #self.Options - maxVisible)
+        local barW = 5
+        local trackX = popupX + popupW - barW - 3
+        local trackY = popupY + 4
+        local trackH = listH - 8
+        local thumbH = maxScroll > 0 and math.max(14, trackH * (maxVisible / #self.Options)) or trackH
+        local travel = math.max(1, trackH - thumbH)
+
+        return {
+            X = popupX, Y = popupY, W = popupW, H = listH,
+            RowH = rowH, MaxVisible = maxVisible, Visible = visible,
+            MaxScroll = maxScroll,
+            TrackX = trackX, TrackY = trackY, TrackW = barW,
+            TrackH = trackH, ThumbH = thumbH, Travel = travel,
+        }
     end
 
     function self:Draw(x, y, w)
@@ -3591,7 +3713,6 @@ Register("Dropdown", function(parent, opts)
         Rect(fieldX, fieldY, fieldW, h, bg, 52, 6, 0.85 + 0.1 * self._hover)
         Stroke(fieldX, fieldY, fieldW, h, th.Stroke, 53, 6, 0.5 + 0.3 * self._hover)
 
-        -- title sits outside the selection field.
         if self.Title ~= "" then
             Text(self.Title, x, fieldY + (h - Layout.TextSize) / 2,
                  th.Text, Layout.TextSize, FontSystem,
@@ -3599,21 +3720,19 @@ Register("Dropdown", function(parent, opts)
                  math.max(1, fieldX - x - 8))
         end
 
-        -- value
-        local valueText = tostring(self.Value or "-")
+        local valueMaxW = math.max(1, fieldW - 42)
+        local valueText = FitText(self:_DisplayValue(), valueMaxW, Layout.TextSize, FontBold)
         local valueW = TextWidth(valueText, Layout.TextSize, FontBold)
         Text(valueText,
              fieldX + fieldW - 26 - valueW,
              fieldY + (h - Layout.TextSize) / 2,
              th.Accent, Layout.TextSize, FontBold,
              54, self.Enabled and 1 or 0.4,
-             200)
+             valueMaxW)
 
-        -- chevron
         local cx = fieldX + fieldW - 14
         local cy = fieldY + h / 2
-        local turn = self._open and 1 or 0
-        local ang = turn * math.pi
+        local ang = (self._open and 1 or 0) * math.pi
         local rad = 4
         local ca, sa = math.cos(ang), math.sin(ang)
         local function rot(ox, oy)
@@ -3625,32 +3744,26 @@ Register("Dropdown", function(parent, opts)
         Bar(x1, y1, xt, yt, 1.5, th.TextDim, 55, 0.85)
         Bar(xt, yt, x2, y2, 1.5, th.TextDim, 55, 0.85)
 
-        -- open list
         self._openAnim = Approach(self._openAnim, self._open and 1 or 0, 20, State.Delta)
         if math.abs(self._openAnim - (self._open and 1 or 0)) < 0.01 then
             self._openAnim = self._open and 1 or 0
         end
 
         if self._openAnim > 0.02 then
-            local listY = fieldY + h + 3
-            local listH = math.min(#self.Options, 8) * 22 + 8
+            local pg = self:_BuildPopupGeometry(fieldX, fieldY, fieldW, h)
+            self._popupGeom = pg
             if self._open then
-                State.OpenDropdownWheelRect = {
-                    X = fieldX, Y = listY, W = fieldW, H = listH
-                }
+                State.OpenDropdownWheelRect = { X = pg.X, Y = pg.Y, W = pg.W, H = pg.H }
                 State.ActiveDropdown = self
             end
-            self:_DrawList(fieldX, listY, fieldW, th)
+            self:_DrawList(pg, th)
+        elseif not self._open then
+            self._popupGeom = nil
         end
     end
 
-    function self:_DrawList(x, y, w, th)
-        local rowH = 22
-        local maxVisible = 8
-        local visible = math.min(#self.Options, maxVisible)
-        local listH = visible * rowH + 8
-
-        local maxScroll = math.max(0, #self.Options - maxVisible)
+    function self:_DrawList(pg, th)
+        local maxScroll = pg.MaxScroll
         self._listScrollTo = Clamp(self._listScrollTo, 0, maxScroll)
         if State.NoAnim then
             self._listScroll = self._listScrollTo
@@ -3661,61 +3774,48 @@ Register("Dropdown", function(parent, opts)
             end
         end
 
-        -- shadow + background
-        Rect(x + 2, y + 3, w, listH, Color3.new(0, 0, 0), 60, 6, 0.25 * self._openAnim)
-        Rect(x, y, w, listH, th.Base, 61, 6, 0.98 * self._openAnim)
-        Stroke(x, y, w, listH, th.Accent, 62, 6, 0.5 * self._openAnim)
+        Rect(pg.X + 2, pg.Y + 3, pg.W, pg.H, Color3.new(0, 0, 0), 60, 6, 0.25 * self._openAnim)
+        Rect(pg.X, pg.Y, pg.W, pg.H, th.Base, 61, 6, 0.98 * self._openAnim)
+        Stroke(pg.X, pg.Y, pg.W, pg.H, th.Accent, 62, 6, 0.5 * self._openAnim)
 
-        for i = 1, visible do
+        local scrollbarReserve = maxScroll > 0 and 13 or 4
+        local labelMaxW = math.max(1, pg.W - 16 - scrollbarReserve)
+
+        for i = 1, pg.Visible do
             local idx = i + math.floor(self._listScroll)
             local option = self.Options[idx]
-            if not option then break end
+            if option == nil then break end
 
-            local ry = y + 4 + (i - 1) * rowH
-            local selected = (option == self.Value)
-            local hover = MouseIn(x + 4, ry, w - 8, rowH)
+            local ry = pg.Y + 4 + (i - 1) * pg.RowH
+            local selected = self.Multi and Contains(self.Value, option) or (option == self.Value)
+            local hoverW = math.max(1, pg.W - 8 - (maxScroll > 0 and 9 or 0))
+            local hover = MouseIn(pg.X + 4, ry, hoverW, pg.RowH)
 
             if selected or hover then
                 local a = selected and 0.18 or 0.1
-                Rect(x + 4, ry, w - 8, rowH, th.Accent, 63, 4, a * self._openAnim)
+                Rect(pg.X + 4, ry, hoverW, pg.RowH, th.Accent, 63, 4, a * self._openAnim)
             end
 
+            local optionText = FitText(option, labelMaxW, Layout.TextSize, FontSystem)
             local labelColor = selected and th.Accent or th.Text
-            Text(tostring(option),
-                 x + 12, ry + (rowH - Layout.TextSize) / 2,
+            Text(optionText,
+                 pg.X + 12, ry + (pg.RowH - Layout.TextSize) / 2,
                  labelColor, Layout.TextSize, FontSystem,
                  64, (selected and 1 or 0.85) * self._openAnim,
-                 w - 20)
+                 labelMaxW)
 
-            if hover and Input.Click then
+            if hover and Input.Click and not self._scrollDrag then
                 Input.Click = false
-                self:SetValue(option)
-                self._open = false
+                self:_ToggleOption(option)
             end
         end
 
-        -- scrollbar hint (if more options than fit)
-        if maxScroll <= 0 then self._scrollbarGeom = nil end
         if maxScroll > 0 then
-            local barW = 5
-            local sx = x + w - barW - 3
-            local trackY = y + 4
-            local trackH = listH - 8
-            Rect(sx, trackY, barW, trackH, th.Track, 65, barW / 2,
-                 0.62 * self._openAnim)
-            local thumbH = math.max(14, trackH * (maxVisible / #self.Options))
-            local thumbY = trackY + (trackH - thumbH) * (self._listScroll / maxScroll)
-
-            -- Save the exact rectangles that are being drawn. Input uses these
-            -- same coordinates so the visible scrollbar and drag hitbox can
-            -- never drift apart because of section/content layout offsets.
-            self._scrollbarGeom = {
-                X = sx, TrackY = trackY, TrackH = trackH,
-                BarW = barW, ThumbY = thumbY, ThumbH = thumbH,
-                Travel = math.max(1, trackH - thumbH), MaxScroll = maxScroll,
-            }
-
-            Rect(sx, thumbY, barW, thumbH, th.Accent, 66, barW / 2,
+            local thumbY = pg.TrackY + pg.Travel * (self._listScroll / maxScroll)
+            Rect(pg.TrackX, pg.TrackY, pg.TrackW, pg.TrackH,
+                 th.Track, 65, pg.TrackW / 2, 0.62 * self._openAnim)
+            Rect(pg.TrackX, thumbY, pg.TrackW, pg.ThumbH,
+                 th.Accent, 66, pg.TrackW / 2,
                  (self._scrollDrag and 1 or 0.9) * self._openAnim)
         end
     end
@@ -3728,80 +3828,35 @@ Register("Dropdown", function(parent, opts)
         local fieldX = x + math.min(w * 0.48, labelW + 18)
         local fieldW = math.max(70, w - (fieldX - x))
 
-        -- if list is open, list hit-test runs first
-        if self._open then
-            local rowH = 22
-            local maxVisible = 8
-            local listH = math.min(#self.Options, maxVisible) * rowH + 8
-            local listY = fieldY + h + 3
-
-            -- The open popup owns wheel input while the cursor is over it.
-            -- Consume the wheel here so the underlying tab cannot scroll too.
-            local maxScroll = math.max(0, #self.Options - maxVisible)
-            if maxScroll > 0 and MouseIn(fieldX, listY, fieldW, listH) then
-                local wheel = Input.Wheel or 0
-                if wheel ~= 0 then
-                    self._listScrollTo = Clamp(self._listScrollTo - wheel, 0, maxScroll)
-                    Input.Wheel = 0
-                end
-            end
-
-            -- Draggable list scrollbar. Use the geometry captured by
-            -- _DrawList() rather than recalculating a second set of positions.
-            local sg = self._scrollbarGeom
-            if maxScroll > 0 and sg then
-                local sx = sg.X
-                local trackY = sg.TrackY
-                local trackH = sg.TrackH
-                local barW = sg.BarW
-                local thumbH = sg.ThumbH
-                local travel = sg.Travel
-                local thumbY = trackY + travel * (self._listScrollTo / maxScroll)
-
-                -- Slightly wider than the 5px visual bar so it is comfortable
-                -- to grab, but centered directly on the visible scrollbar.
-                local grabPad = 5
-
-                if self._scrollDrag then
-                    if Input.Down then
-                        local newY = Clamp(Input.Y - self._scrollDragOffsetY,
-                                           trackY, trackY + travel)
-                        self._listScrollTo = ((newY - trackY) / travel) * maxScroll
-                        self._listScroll = self._listScrollTo
+        -- Popup option clicks use the canonical on-screen popup rectangle.
+        if self._open and self._popupGeom then
+            local pg = self._popupGeom
+            if Input.Click and MouseIn(pg.X, pg.Y, pg.W, pg.H) then
+                local row = math.floor((Input.Y - (pg.Y + 4)) / pg.RowH) + 1
+                if row >= 1 and row <= pg.Visible then
+                    local idx = row + math.floor(self._listScroll)
+                    local option = self.Options[idx]
+                    local scrollbarZone = pg.MaxScroll > 0 and
+                        MouseIn(pg.TrackX - 3, pg.TrackY, pg.TrackW + 6, pg.TrackH)
+                    if option ~= nil and not scrollbarZone then
                         Input.Click = false
-                    else
-                        self._scrollDrag = false
+                        self:_ToggleOption(option)
+                        return
                     end
-                elseif Input.Click and MouseIn(sx - grabPad, thumbY - 2,
-                                                barW + grabPad * 2, thumbH + 4) then
-                    self._scrollDrag = true
-                    self._scrollDragOffsetY = Input.Y - thumbY
-                    Input.Click = false
-                    return
-                elseif Input.Click and MouseIn(sx - grabPad, trackY,
-                                                barW + grabPad * 2, trackH) then
-                    local newY = Clamp(Input.Y - thumbH / 2, trackY, trackY + travel)
-                    self._listScrollTo = ((newY - trackY) / travel) * maxScroll
-                    self._listScroll = self._listScrollTo
-                    self._scrollDrag = true
-                    self._scrollDragOffsetY = thumbH / 2
-                    Input.Click = false
-                    return
                 end
-            else
-                self._scrollDrag = false
             end
 
-            -- click outside closes
-            if Input.Click and not MouseIn(fieldX, fieldY, fieldW, h) then
+            if Input.Click
+               and not MouseIn(fieldX, fieldY, fieldW, h)
+               and not MouseIn(pg.X, pg.Y, pg.W, pg.H) then
                 self._open = false
             end
         end
 
-        -- field itself
         if MouseIn(fieldX, fieldY, fieldW, h) and Input.Click then
             Input.Click = false
             self._open = not self._open
+            if self._open then State.ActiveDropdown = self end
         end
     end
 
@@ -4523,30 +4578,24 @@ local function UpdateDropdownScrollbarInput()
         return false
     end
 
-    local sg = dropdown._scrollbarGeom
-    if not sg or not sg.MaxScroll or sg.MaxScroll <= 0 then
+    local pg = dropdown._popupGeom
+    if not pg or pg.MaxScroll <= 0 then
         dropdown._scrollDrag = false
         return false
     end
 
-    local trackX = sg.X
-    local trackY = sg.TrackY
-    local trackW = sg.BarW
-    local trackH = sg.TrackH
-    local thumbH = sg.ThumbH
-    local travel = math.max(1, sg.Travel)
-    local maxScroll = sg.MaxScroll
+    -- Identical interaction pattern to the working main content scrollbar.
+    local trackX, trackY = pg.TrackX, pg.TrackY
+    local trackW, trackH = pg.TrackW, pg.TrackH
+    local thumbH, travel = pg.ThumbH, pg.Travel
+    local maxScroll = pg.MaxScroll
     local thumbY = trackY + travel * ((dropdown._listScrollTo or 0) / maxScroll)
-
-    -- Same hitbox expansion used by the proven main content scrollbar.
-    local hitX = trackX - 3
-    local hitW = trackW + 6
 
     if dropdown._scrollDrag then
         if Input.Down then
             local newThumbY = Clamp(Input.Y - dropdown._scrollDragOffsetY,
                                     trackY, trackY + travel)
-            local frac = (newThumbY - trackY) / travel
+            local frac = (newThumbY - trackY) / math.max(1, travel)
             dropdown._listScrollTo = Clamp(frac * maxScroll, 0, maxScroll)
             dropdown._listScroll = dropdown._listScrollTo
             Input.Click = false
@@ -4556,18 +4605,16 @@ local function UpdateDropdownScrollbarInput()
         end
     end
 
-    if Input.Click and MouseIn(hitX, thumbY - 2, hitW, thumbH + 4) then
+    if Input.Click and MouseIn(trackX - 3, thumbY - 2, trackW + 6, thumbH + 4) then
         dropdown._scrollDrag = true
         dropdown._scrollDragOffsetY = Input.Y - thumbY
         Input.Click = false
         return true
     end
 
-    -- Match the main scrollbar: clicking the empty track jumps there and
-    -- immediately begins a drag using the centered thumb offset.
-    if Input.Click and MouseIn(hitX, trackY, hitW, trackH) then
+    if Input.Click and MouseIn(trackX - 3, trackY, trackW + 6, trackH) then
         local centered = Clamp(Input.Y - thumbH / 2, trackY, trackY + travel)
-        local frac = (centered - trackY) / travel
+        local frac = (centered - trackY) / math.max(1, travel)
         dropdown._listScrollTo = Clamp(frac * maxScroll, 0, maxScroll)
         dropdown._listScroll = dropdown._listScrollTo
         dropdown._scrollDrag = true
@@ -5793,7 +5840,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.4-DROPDOWN-GLOBAL-DRAG-PAGE-CLIP"
+Library.Version       = "v46.5-DROPDOWN-OVERLAY-MULTI"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5992,7 +6039,7 @@ end)
 
 
 
-Library.Version = "v46.4-DROPDOWN-GLOBAL-DRAG-PAGE-CLIP"
+Library.Version = "v46.5-DROPDOWN-OVERLAY-MULTI"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
