@@ -22,42 +22,30 @@ local Mouse         = LocalPlayer:GetMouse()
 local Camera        = workspace.CurrentCamera
 
 local Fonts         = Drawing.Fonts
-local FontSystem    = Fonts.System
-local FontBold      = Fonts.SystemBold
-local FontMono      = Fonts.Monospace
-local FontUI        = Fonts.UI
-local FontPixel     = Fonts.Pixel
 
 -- approximate per-character width multipliers, used for text fitting
 local FontMetrics = {
-    [FontSystem] = 0.48,
-    [FontBold]   = 0.52,
-    [FontUI]     = 0.50,
-    [FontMono]   = 0.60,
-    [FontPixel]  = 0.50,
+    [Fonts.System] = 0.48,
+    [Fonts.SystemBold]   = 0.52,
+    [Fonts.UI]     = 0.50,
+    [Fonts.Monospace]   = 0.60,
+    [Fonts.Pixel]  = 0.50,
 }
 
 -- Matcha's complete Drawing.Fonts set currently exposed by this library.
--- Overlay APIs accept these names case-insensitively.
-local OverlayFonts = {
-    system = FontSystem,
-    systembold = FontBold,
-    bold = FontBold,
-    ui = FontUI,
-    monospace = FontMono,
-    mono = FontMono,
-    pixel = FontPixel,
-}
-
-local function ResolveOverlayFont(value, fallback)
-    if value == nil then return fallback or FontBold end
-    if type(value) ~= "string" then
-        -- Also allow callers to pass Drawing.Fonts values directly.
-        return value
-    end
+-- Store the resolver on the existing Fonts table instead of allocating more
+-- top-level locals; Matcha/Lua chunks have a hard 200-register ceiling.
+Fonts.ResolveOverlay = function(value, fallback)
+    if value == nil then return fallback or Fonts.SystemBold end
+    if type(value) ~= "string" then return value end
     local key = string.lower(value)
     key = string.gsub(key, "[%s_%-]", "")
-    return OverlayFonts[key] or fallback or FontBold
+    if key == "system" then return Fonts.System end
+    if key == "systembold" or key == "bold" then return Fonts.SystemBold end
+    if key == "ui" then return Fonts.UI end
+    if key == "monospace" or key == "mono" then return Fonts.Monospace end
+    if key == "pixel" then return Fonts.Pixel end
+    return fallback or Fonts.SystemBold
 end
 
 -- ============================================================================
@@ -2311,7 +2299,7 @@ local function DrawStartupFrame()
         if typedTitle ~= "" then
             -- Keep the finished text anchored in its final location. Each new
             -- character simply appears at the end like a real typewriter.
-            Text(typedTitle, finalTitleX, titleY, th.Text, titleSize, FontBold,
+            Text(typedTitle, finalTitleX, titleY, th.Text, titleSize, Fonts.SystemBold,
                  35, 1, math.max(40, w - (finalTitleX - x) - 24))
         end
     end
@@ -2456,13 +2444,13 @@ local function DrawTitleBar(title, subtitle)
     local subY = State.Y + 25
 
     Text(title, textX, titleY, th.Text,
-         titleSize, FontBold, 35, 0.99,
+         titleSize, Fonts.SystemBold, 35, 0.99,
          math.max(1, State.W * 0.42))
 
     local sub = tostring(subtitle or "")
     if sub ~= "" then
         Text(string.upper(sub), textX, subY, th.TextDim,
-             subSize, FontSystem, 35, 0.76,
+             subSize, Fonts.System, 35, 0.76,
              math.max(1, State.W * 0.38))
     end
 
@@ -2476,7 +2464,7 @@ local function DrawTitleBar(title, subtitle)
 
     local statusText = string.upper(tostring(State.Theme.Name or "SHADOW"))
     local statusSize = 8
-    local statusTextW = TextWidth(statusText, statusSize, FontBold)
+    local statusTextW = TextWidth(statusText, statusSize, Fonts.SystemBold)
     local pillW = math.min(108, math.max(58, statusTextW + 28))
     local pillH = 22
     local pillX = closeX - pillW - 10
@@ -2491,7 +2479,7 @@ local function DrawTitleBar(title, subtitle)
     Text(statusText,
          pillX + 19,
          TextMidY(pillY, pillH, statusSize),
-         th.TextDim, statusSize, FontBold,
+         th.TextDim, statusSize, Fonts.SystemBold,
          34, 0.88, pillW - 24)
 
     local closeHover = MouseIn(closeX, closeY, closeSize, closeSize)
@@ -2722,7 +2710,7 @@ local function DrawTabRail()
                     labelAlpha = openAmt
                 end
                 Text(tab.Name, labelX, labelY,
-                     labelColor, Layout.TextSize, FontBold,
+                     labelColor, Layout.TextSize, Fonts.SystemBold,
                      45, labelAlpha, labelRoom)
             end
 
@@ -2866,13 +2854,13 @@ Register("Label", function(parent, opts)
         local th = State.Theme
         local titleY = TextMidY(y, 18, Layout.TextSize)
         Text(self.Title, x, titleY,
-             th.Text, Layout.TextSize, FontSystem,
+             th.Text, Layout.TextSize, Fonts.System,
              50, self.Enabled and 0.92 or 0.4, w)
 
         if self.Description ~= "" then
             local descY = y + 16
             Text(self.Description, x, descY,
-                 th.TextDim, Layout.SmallSize, FontSystem,
+                 th.TextDim, Layout.SmallSize, Fonts.System,
                  51, self.Enabled and 0.7 or 0.3,
                  w)
             self.Height = 32
@@ -2899,7 +2887,7 @@ Register("Divider", function(parent, opts)
         local th = State.Theme
         local cy = y + 7
         if self.Title and self.Title ~= "" then
-            local textW = TextWidth(self.Title, Layout.TinySize, FontBold)
+            local textW = TextWidth(self.Title, Layout.TinySize, Fonts.SystemBold)
             local px = 6
             local gap = 8
             -- left line
@@ -2907,7 +2895,7 @@ Register("Divider", function(parent, opts)
             -- title
             Text(string.upper(self.Title),
                  x + gap, cy - 6,
-                 th.TextMuted, Layout.TinySize, FontBold,
+                 th.TextMuted, Layout.TinySize, Fonts.SystemBold,
                  51, 0.7)
             -- right line
             Line(x + gap + textW + gap, cy,
@@ -2940,7 +2928,7 @@ Register("Button", function(parent, opts)
 
         local btnW = math.max(60,
             math.min(w * 0.4,
-                     TextWidth(self.ButtonText, Layout.TextSize, FontBold) + 24))
+                     TextWidth(self.ButtonText, Layout.TextSize, Fonts.SystemBold) + 24))
         local btnX = x + w - btnW
         local btnY = y + 3
 
@@ -2955,16 +2943,16 @@ Register("Button", function(parent, opts)
         Stroke(btnX, btnY, btnW, h, th.Accent, 53, 6, 0.35 + 0.45 * glow)
 
         local label = self.ButtonText
-        local lw = TextWidth(label, Layout.TextSize, FontBold)
+        local lw = TextWidth(label, Layout.TextSize, Fonts.SystemBold)
         local lc = mix(th.Text, th.Accent, glow * 0.7)
         Text(label, btnX + (btnW - lw) / 2, TextMidY(btnY, h, Layout.TextSize),
-             lc, Layout.TextSize, FontBold, 54, self.Enabled and 1 or 0.5)
+             lc, Layout.TextSize, Fonts.SystemBold, 54, self.Enabled and 1 or 0.5)
 
         -- title on the left
         if self.Title ~= "" then
             local titleY = TextMidY(y, Layout.ButtonH + 6, Layout.TextSize)
             Text(self.Title, x, titleY,
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  51, self.Enabled and 0.9 or 0.4,
                  btnX - x - 10)
         end
@@ -2975,7 +2963,7 @@ Register("Button", function(parent, opts)
         local h = Layout.ButtonH
         local btnW = math.max(60,
             math.min(w * 0.4,
-                     TextWidth(self.ButtonText, Layout.TextSize, FontBold) + 24))
+                     TextWidth(self.ButtonText, Layout.TextSize, Fonts.SystemBold) + 24))
         local btnX = x + w - btnW
         local btnY = y + 3
 
@@ -3051,7 +3039,7 @@ Register("Toggle", function(parent, opts)
         if self.Title ~= "" then
             local titleY = TextMidY(y, self.Height, Layout.TextSize)
             Text(self.Title, x, titleY,
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  51, self.Enabled and 0.92 or 0.4,
                  trackX - x - 10)
         end
@@ -3060,7 +3048,7 @@ Register("Toggle", function(parent, opts)
         if self.Description ~= "" then
             local descY = y + self.Height - 4
             Text(self.Description, x, descY,
-                 th.TextDim, Layout.SmallSize, FontSystem,
+                 th.TextDim, Layout.SmallSize, Fonts.System,
                  51, self.Enabled and 0.6 or 0.25,
                  trackX - x - 10)
             self.Height = math.max(self.Height, Layout.ToggleH + 12)
@@ -3133,7 +3121,7 @@ Register("Slider", function(parent, opts)
 
         -- value display
         local valueText = tostring(self.Value) .. self.Suffix
-        local valueW = TextWidth(valueText, Layout.TextSize, FontMono)
+        local valueW = TextWidth(valueText, Layout.TextSize, Fonts.Monospace)
         local badgeW = valueW + 14
         local badgeH = 18
         local badgeX = x + w - badgeW
@@ -3142,7 +3130,7 @@ Register("Slider", function(parent, opts)
         -- title
         if self.Title ~= "" then
             Text(self.Title, x, y + 1,
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  51, self.Enabled and 0.92 or 0.4,
                  w - badgeW - 12)
         end
@@ -3155,7 +3143,7 @@ Register("Slider", function(parent, opts)
         Text(valueText,
              badgeX + (badgeW - valueW) / 2,
              badgeY + (badgeH - Layout.TextSize) / 2,
-             th.Accent, Layout.TextSize, FontMono,
+             th.Accent, Layout.TextSize, Fonts.Monospace,
              54, 1)
 
         -- track
@@ -3435,14 +3423,14 @@ local function DrawSection(section, x, y, w)
 
     if headerVisible then
         local arrow = collapse > 0.5 and ">" or "v"
-        Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, FontBold, 50, 0.9, 10)
+        Text(arrow, x, y + 1, State.Theme.Accent, Layout.SmallSize, Fonts.SystemBold, 50, 0.9, 10)
 
-        Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, FontBold,
+        Text(section.Title, x + 14, y, State.Theme.Text, Layout.TitleSize, Fonts.SystemBold,
              50, 0.98, math.max(1, w - 14))
 
         if section.Description and section.Description ~= "" then
             Text(section.Description, x + 14, y + Layout.SectionTitleH,
-                 State.Theme.TextDim, Layout.SmallSize, FontSystem, 50, 0.72, math.max(1, w - 14))
+                 State.Theme.TextDim, Layout.SmallSize, Fonts.System, 50, 0.72, math.max(1, w - 14))
         end
     end
 
@@ -3670,7 +3658,7 @@ Register("RangeSlider", function(parent, opts)
 
         -- dual value display
         local valueText = tostring(self.Low) .. " - " .. tostring(self.High) .. self.Suffix
-        local valueW = TextWidth(valueText, Layout.TextSize, FontMono)
+        local valueW = TextWidth(valueText, Layout.TextSize, Fonts.Monospace)
         local badgeW = valueW + 14
         local badgeH = 18
         local badgeX = x + w - badgeW
@@ -3678,7 +3666,7 @@ Register("RangeSlider", function(parent, opts)
 
         if self.Title ~= "" then
             Text(self.Title, x, y + 1,
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  51, self.Enabled and 0.92 or 0.4,
                  w - badgeW - 12)
         end
@@ -3690,7 +3678,7 @@ Register("RangeSlider", function(parent, opts)
         Text(valueText,
              badgeX + (badgeW - valueW) / 2,
              badgeY + (badgeH - Layout.TextSize) / 2,
-             th.Accent, Layout.TextSize, FontMono,
+             th.Accent, Layout.TextSize, Fonts.Monospace,
              54, 1)
 
         -- track
@@ -3886,7 +3874,7 @@ Register("Dropdown", function(parent, opts)
 
     function self:_BuildFieldGeometry(x, y, w, h)
         local fieldY = y + 2
-        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
+        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, Fonts.System) or 0
 
         -- Preserve enough room for the title, but let the selector itself size
         -- to the selected text. Multi-select can grow to a fixed cap, after
@@ -3896,7 +3884,7 @@ Register("Dropdown", function(parent, opts)
         local maxFieldW = math.min(240, availableW)
 
         local display = self:_DisplayValue()
-        local textW = TextWidth(display, Layout.TextSize, FontBold)
+        local textW = TextWidth(display, Layout.TextSize, Fonts.SystemBold)
         local desiredW = textW + 34 -- compact left room + arrow/right padding
         local fieldW = Clamp(desiredW, 70, maxFieldW)
 
@@ -3928,9 +3916,9 @@ Register("Dropdown", function(parent, opts)
         local availableW = math.max(70, maxRight - minX)
         local maxPopupW = math.min(260, availableW)
 
-        local widest = TextWidth(self:_DisplayValue(), Layout.TextSize, FontBold)
+        local widest = TextWidth(self:_DisplayValue(), Layout.TextSize, Fonts.SystemBold)
         for _, option in ipairs(self.Options) do
-            widest = math.max(widest, TextWidth(tostring(option), Layout.TextSize, FontSystem))
+            widest = math.max(widest, TextWidth(tostring(option), Layout.TextSize, Fonts.System))
         end
 
         local scrollbarRoom = (#self.Options > maxVisible) and 17 or 8
@@ -3976,7 +3964,7 @@ Register("Dropdown", function(parent, opts)
 
         if self.Title ~= "" then
             Text(self.Title, x, fieldY + (h - Layout.TextSize) / 2,
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  54, self.Enabled and 0.92 or 0.4,
                  fg.LabelRoom)
         end
@@ -3985,12 +3973,12 @@ Register("Dropdown", function(parent, opts)
         -- arrow instead of the older oversized right padding.
         local valueRightPad = 22
         local valueMaxW = math.max(1, fieldW - valueRightPad - 6)
-        local valueText = FitText(fg.Display, valueMaxW, Layout.TextSize, FontBold)
-        local valueW = TextWidth(valueText, Layout.TextSize, FontBold)
+        local valueText = FitText(fg.Display, valueMaxW, Layout.TextSize, Fonts.SystemBold)
+        local valueW = TextWidth(valueText, Layout.TextSize, Fonts.SystemBold)
         Text(valueText,
              fieldX + fieldW - valueRightPad - valueW,
              fieldY + (h - Layout.TextSize) / 2,
-             th.Accent, Layout.TextSize, FontBold,
+             th.Accent, Layout.TextSize, Fonts.SystemBold,
              54, self.Enabled and 1 or 0.4,
              valueMaxW)
 
@@ -4061,11 +4049,11 @@ Register("Dropdown", function(parent, opts)
                 Rect(pg.X + 4, ry, hoverW, pg.RowH, th.Accent, 63, 4, a * self._openAnim)
             end
 
-            local optionText = FitText(option, labelMaxW, Layout.TextSize, FontSystem)
+            local optionText = FitText(option, labelMaxW, Layout.TextSize, Fonts.System)
             local labelColor = selected and th.Accent or th.Text
             Text(optionText,
                  pg.X + optionPadX, ry + (pg.RowH - Layout.TextSize) / 2,
-                 labelColor, Layout.TextSize, FontSystem,
+                 labelColor, Layout.TextSize, Fonts.System,
                  64, (selected and 1 or 0.85) * self._openAnim,
                  labelMaxW)
 
@@ -4162,15 +4150,15 @@ Register("Keybind", function(parent, opts)
         local titleW = 0
         if self.Title ~= "" then
             Text(self.Title, x, TextMidY(y, self.Height, Layout.TextSize),
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  51, self.Enabled and 0.92 or 0.4,
                  w - 80)
-            titleW = TextWidth(self.Title, Layout.TextSize, FontSystem)
+            titleW = TextWidth(self.Title, Layout.TextSize, Fonts.System)
         end
 
         -- chip on the right
         local display = self._listening and "..." or KeyLabel.Format(self.Value)
-        local chipW = math.max(38, TextWidth(display, Layout.TextSize, FontMono) + 18)
+        local chipW = math.max(38, TextWidth(display, Layout.TextSize, Fonts.Monospace) + 18)
         local chipX = x + w - chipW
         local chipY = y + (self.Height - h) / 2
 
@@ -4194,9 +4182,9 @@ Register("Keybind", function(parent, opts)
 
         local labelColor = self._listening and th.Accent or th.Text
         Text(display,
-             chipX + (chipW - TextWidth(display, Layout.TextSize, FontMono)) / 2 + 4,
+             chipX + (chipW - TextWidth(display, Layout.TextSize, Fonts.Monospace)) / 2 + 4,
              chipY + (h - Layout.TextSize) / 2,
-             labelColor, Layout.TextSize, FontMono,
+             labelColor, Layout.TextSize, Fonts.Monospace,
              54, self.Enabled and 1 or 0.5)
     end
 
@@ -4205,7 +4193,7 @@ Register("Keybind", function(parent, opts)
         local h = Layout.FieldH
 
         local display = self._listening and "..." or KeyLabel.Format(self.Value)
-        local chipW = math.max(38, TextWidth(display, Layout.TextSize, FontMono) + 18)
+        local chipW = math.max(38, TextWidth(display, Layout.TextSize, Fonts.Monospace) + 18)
         local chipX = x + w - chipW
         local chipY = y + (self.Height - h) / 2
 
@@ -4256,7 +4244,7 @@ Register("Textbox", function(parent, opts)
         local th = State.Theme
         local h = Layout.FieldH + 2
         local fieldY = y + 2
-        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, FontSystem) or 0
+        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, Fonts.System) or 0
         local fieldX = x + math.min(w * 0.48, labelW + 18)
         local fieldW = math.max(70, w - (fieldX - x))
 
@@ -4275,10 +4263,10 @@ Register("Textbox", function(parent, opts)
         local textX = fieldX + 10
         if self.Title ~= "" then
             Text(self.Title, textX, fieldY + (h - Layout.TextSize) / 2,
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  54, self.Enabled and 0.92 or 0.4,
                  100)
-            textX = textX + TextWidth(self.Title, Layout.TextSize, FontSystem) + 12
+            textX = textX + TextWidth(self.Title, Layout.TextSize, Fonts.System) + 12
         end
 
         -- value / placeholder
@@ -4288,15 +4276,15 @@ Register("Textbox", function(parent, opts)
 
         local availW = fieldW - (textX - fieldX) - 12
         local visible = display
-        if TextWidth(visible, Layout.TextSize, FontMono) > availW then
+        if TextWidth(visible, Layout.TextSize, Fonts.Monospace) > availW then
             -- trim from left to show end of value
-            local excess = TextWidth(visible, Layout.TextSize, FontMono) - availW
-            local cut = math.ceil(excess / (Layout.TextSize * (FontMetrics[FontMono] or 0.6)))
+            local excess = TextWidth(visible, Layout.TextSize, Fonts.Monospace) - availW
+            local cut = math.ceil(excess / (Layout.TextSize * (FontMetrics[Fonts.Monospace] or 0.6)))
             visible = string.sub(visible, cut + 1)
         end
 
         Text(visible, textX, fieldY + (h - Layout.TextSize) / 2,
-             color, Layout.TextSize, FontMono, 54, 1, availW)
+             color, Layout.TextSize, Fonts.Monospace, 54, 1, availW)
 
         -- caret (blinking when focused)
         if focused then
@@ -4305,7 +4293,7 @@ Register("Textbox", function(parent, opts)
             local caretAlpha = (self._caretAnim > 0.5) and 1 or 0.2
 
             -- position caret within visible range
-            local caretX = textX + TextWidth(string.sub(val, 1, self._focus.Caret), Layout.TextSize, FontMono)
+            local caretX = textX + TextWidth(string.sub(val, 1, self._focus.Caret), Layout.TextSize, Fonts.Monospace)
             if caretX < fieldX + 6 then caretX = fieldX + 6 end
             if caretX > fieldX + fieldW - 6 then caretX = fieldX + fieldW - 6 end
 
@@ -4440,7 +4428,7 @@ Register("ColorPicker", function(parent, opts)
         local titleW = 0
         if self.Title ~= "" then
             Text(self.Title, x, TextMidY(y, self.Height, Layout.TextSize),
-                 th.Text, Layout.TextSize, FontSystem,
+                 th.Text, Layout.TextSize, Fonts.System,
                  51, self.Enabled and 0.92 or 0.4,
                  w - 44)
         end
@@ -4545,7 +4533,7 @@ Register("ColorPicker", function(parent, opts)
 
         Text(hex,
              previewX + previewW + 8, prevY + 5,
-             th.TextDim, Layout.SmallSize, FontMono, 65, 0.9)
+             th.TextDim, Layout.SmallSize, Fonts.Monospace, 65, 0.9)
 
         -- --- alpha strip ---
         local alphaY = prevY + prevH + 6
@@ -4568,7 +4556,7 @@ Register("ColorPicker", function(parent, opts)
 
         Text(string.format("%d%%", math.floor(self._alpha * 100 + 0.5)),
              alphaX + alphaW - 30, alphaY + 8,
-             th.TextDim, Layout.TinySize, FontMono, 65, 0.8)
+             th.TextDim, Layout.TinySize, Fonts.Monospace, 65, 0.8)
 
         -- cache panel geometry on self for Input
         self._panelX = px
@@ -4772,13 +4760,13 @@ local function DrawContent()
     local titleY = Geometry.ContentY + 6
     local title = tab.Name
     Text(title, Geometry.ContentX + Layout.ContentPadX, titleY,
-         State.Theme.Text, 16, FontBold, 60, 0.98,
+         State.Theme.Text, 16, Fonts.SystemBold, 60, 0.98,
          Geometry.ContentW - Layout.ContentPadX * 2)
 
     if tab.Subtitle and tab.Subtitle ~= "" then
         Text(tab.Subtitle,
              Geometry.ContentX + Layout.ContentPadX, titleY + 20,
-             State.Theme.TextDim, 11, FontSystem, 60, 0.7,
+             State.Theme.TextDim, 11, Fonts.System, 60, 0.7,
              Geometry.ContentW - Layout.ContentPadX * 2)
     end
 
@@ -5205,14 +5193,14 @@ local function DrawNotifications()
 
             -- Small semantic type label above the title.
             Text(typeLabel, textX, ny + 10,
-                 accent, 8, FontBold, 377, 0.90 * a, textW)
+                 accent, 8, Fonts.SystemBold, 377, 0.90 * a, textW)
 
             Text(n.Title, textX, ny + 24,
-                 th.Text, 14, FontBold, 378, 0.99 * a, textW)
+                 th.Text, 14, Fonts.SystemBold, 378, 0.99 * a, textW)
 
             if n.Content ~= "" then
                 Text(n.Content, textX, ny + 45,
-                     th.TextDim, 10, FontSystem, 378, 0.84 * a, textW)
+                     th.TextDim, 10, Fonts.System, 378, 0.84 * a, textW)
             end
 
             -- Lifetime track + accent progress. It shrinks toward the anchor.
@@ -5276,7 +5264,7 @@ local function DrawTooltip()
     local a = Tooltip.Fade
 
     local text = Tooltip.Current
-    local textW = TextWidth(text, 12, FontSystem)
+    local textW = TextWidth(text, 12, Fonts.System)
     local padX = 10
     local padY = 6
     local boxW = textW + padX * 2
@@ -5300,7 +5288,7 @@ local function DrawTooltip()
     Stroke(tx, ty, boxW, boxH, th.Stroke, 302, 6, 0.6 * a)
 
     Text(text, tx + padX, ty + padY + 1,
-         th.Text, 12, FontSystem, 303, a)
+         th.Text, 12, Fonts.System, 303, a)
 end
 
 local function ClearTooltip()
@@ -5345,8 +5333,8 @@ function HUDBox.new(opts)
         Dynamic     = dynamic,
         MaxLines    = Clamp(math.floor(tonumber(opts.MaxLines or opts.maxLines) or 100), 1, 100),
         MaxChars    = Clamp(math.floor(tonumber(opts.MaxWidth or opts.maxWidth or opts.MaxChars or opts.maxChars) or 50), 8, 50),
-        Font        = ResolveOverlayFont(opts.Font or opts.font, FontBold),
-        HeaderFont  = ResolveOverlayFont(opts.HeaderFont or opts.headerFont, FontBold),
+        Font        = Fonts.ResolveOverlay(opts.Font or opts.font, Fonts.SystemBold),
+        HeaderFont  = Fonts.ResolveOverlay(opts.HeaderFont or opts.headerFont, Fonts.SystemBold),
         FontSize    = Clamp(tonumber(opts.FontSize or opts.fontSize) or 10, 7, 18),
         HeaderSize  = Clamp(tonumber(opts.HeaderSize or opts.headerSize) or 12, 8, 20),
         Pin         = false,
@@ -5391,12 +5379,12 @@ function HUDBox:SetDynamic(value)
 end
 
 function HUDBox:SetFont(font)
-    self.Font = ResolveOverlayFont(font, self.Font)
+    self.Font = Fonts.ResolveOverlay(font, self.Font)
     return self
 end
 
 function HUDBox:SetHeaderFont(font)
-    self.HeaderFont = ResolveOverlayFont(font, self.HeaderFont)
+    self.HeaderFont = Fonts.ResolveOverlay(font, self.HeaderFont)
     return self
 end
 
@@ -5423,21 +5411,21 @@ function HUDBox:Line(text, color, font)
                 segments[#segments + 1] = {
                     Text = tostring(part.Text or part.text or part[1] or ""),
                     Color = part.Color or part.color or part[2],
-                    Font = ResolveOverlayFont(part.Font or part.font or part[3], nil),
+                    Font = Fonts.ResolveOverlay(part.Font or part.font or part[3], nil),
                     Size = tonumber(part.Size or part.size or part[4]),
                 }
             else
                 segments[#segments + 1] = {
                     Text = tostring(part),
                     Color = color,
-                    Font = ResolveOverlayFont(font, nil),
+                    Font = Fonts.ResolveOverlay(font, nil),
                 }
             end
         end
         self.Lines[#self.Lines + 1] = {
             Segments = segments,
             Color = color,
-            Font = ResolveOverlayFont(font, self.Font),
+            Font = Fonts.ResolveOverlay(font, self.Font),
         }
     else
         local tableFont = type(text) == "table" and (text.Font or text.font or text[3]) or nil
@@ -5445,7 +5433,7 @@ function HUDBox:Line(text, color, font)
         self.Lines[#self.Lines + 1] = {
             Text = tostring((type(text) == "table" and (text.Text or text.text or text[1])) or text or ""),
             Color = (type(text) == "table" and (text.Color or text.color or text[2])) or color,
-            Font = ResolveOverlayFont(tableFont or font, self.Font),
+            Font = Fonts.ResolveOverlay(tableFont or font, self.Font),
             Size = tonumber(tableSize),
         }
     end
@@ -5500,13 +5488,13 @@ local function DrawHUDBoxes()
                 local lineTall = box.FontSize or 10
                 if line.Segments then
                     for _, segment in ipairs(line.Segments) do
-                        local font = segment.Font or line.Font or box.Font or FontBold
+                        local font = segment.Font or line.Font or box.Font or Fonts.SystemBold
                         local size = segment.Size or box.FontSize or 10
                         lineW = lineW + TextWidth(tostring(segment.Text or ""), size, font)
                         lineTall = math.max(lineTall, size)
                     end
                 else
-                    local font = line.Font or box.Font or FontBold
+                    local font = line.Font or box.Font or Fonts.SystemBold
                     local size = line.Size or box.FontSize or 10
                     lineW = TextWidth(tostring(line.Text or ""), size, font)
                     lineTall = math.max(lineTall, size)
@@ -5515,7 +5503,7 @@ local function DrawHUDBoxes()
                 tallestLine = math.max(tallestLine, lineTall)
             end
 
-            local headerFont = box.HeaderFont or FontBold
+            local headerFont = box.HeaderFont or Fonts.SystemBold
             local headerSize = box.HeaderSize or 12
             local header = string.upper(tostring(box.Title or "OVERLAY"))
             local headerW = TextWidth(header, headerSize, headerFont)
@@ -5525,7 +5513,7 @@ local function DrawHUDBoxes()
             local maxChars = Clamp(box.MaxChars or 50, 8, 50)
             local charCapW = TextWidth(string.rep("M", maxChars),
                                        box.FontSize or 10,
-                                       box.Font or FontBold) + padX * 2
+                                       box.Font or Fonts.SystemBold) + padX * 2
             local naturalW = math.max(headerW + 28, widestLine + padX * 2)
             local dynamicW = Clamp(naturalW, 100, math.max(100, charCapW))
             local boxW = box.Dynamic and dynamicW or box.W
@@ -5581,7 +5569,7 @@ local function DrawHUDBoxes()
                     if line.Segments then
                         for _, segment in ipairs(line.Segments) do
                             if tx >= maxRight then break end
-                            local font = segment.Font or line.Font or box.Font or FontBold
+                            local font = segment.Font or line.Font or box.Font or Fonts.SystemBold
                             local size = segment.Size or box.FontSize or 10
                             local room = maxRight - tx
                             local segmentText = TrimText(tostring(segment.Text or ""), room, size, font)
@@ -5594,7 +5582,7 @@ local function DrawHUDBoxes()
                             end
                         end
                     else
-                        local font = line.Font or box.Font or FontBold
+                        local font = line.Font or box.Font or Fonts.SystemBold
                         local size = line.Size or box.FontSize or 10
                         Text(line.Text or "", tx,
                              TextMidY(rowY, lineH, size),
@@ -5898,14 +5886,14 @@ local function GetKeybindOverlayGeometry()
     -- chip starts on the same X position so shorter rows line up cleanly.
     local labelSize = 11
     local keySize = 12
-    local longestLabelW = TextWidth("No hotkeys assigned", labelSize, FontBold)
-    local longestKeyW = TextWidth("NONE", keySize, FontBold)
+    local longestLabelW = TextWidth("No hotkeys assigned", labelSize, Fonts.SystemBold)
+    local longestKeyW = TextWidth("NONE", keySize, Fonts.SystemBold)
     for i = 1, math.min(#list, 8) do
         local entry = list[i]
         local title = tostring(entry.Title or "Hotkey")
         local value = string.upper(tostring(entry.Row and entry.Row.Value or "NONE"))
-        longestLabelW = math.max(longestLabelW, TextWidth(title, labelSize, FontBold))
-        longestKeyW = math.max(longestKeyW, TextWidth(value, keySize, FontBold))
+        longestLabelW = math.max(longestLabelW, TextWidth(title, labelSize, Fonts.SystemBold))
+        longestKeyW = math.max(longestKeyW, TextWidth(value, keySize, Fonts.SystemBold))
     end
 
     local pillW = math.max(36, longestKeyW + 18)
@@ -5963,10 +5951,10 @@ DrawKeybindOverlay = function()
 
     local header = "HOTKEYS"
     local headerSize = 12
-    local headerW = TextWidth(header, headerSize, FontBold)
+    local headerW = TextWidth(header, headerSize, Fonts.SystemBold)
     Text(header, x + (w - headerW) / 2,
          TextMidY(y, headerH, headerSize) - 2,
-         th.Text, headerSize, FontBold, 334, 1, headerW + 2)
+         th.Text, headerSize, Fonts.SystemBold, 334, 1, headerW + 2)
 
     Line(x + 10, y + headerH - 1, x + w - 10, y + headerH - 1,
          th.Accent, 334, 1, 0.22)
@@ -5974,10 +5962,10 @@ DrawKeybindOverlay = function()
     local rowY = y + headerH
     if #list == 0 then
         local empty = "No hotkeys assigned"
-        local emptyW = TextWidth(empty, 11, FontBold)
+        local emptyW = TextWidth(empty, 11, Fonts.SystemBold)
         Text(empty, x + (w - emptyW) / 2,
              TextMidY(rowY, rowH, 11),
-             th.TextDim, 11, FontBold, 335, 0.82, emptyW + 2)
+             th.TextDim, 11, Fonts.SystemBold, 335, 0.82, emptyW + 2)
         FrameAlpha = previousAlpha
         return
     end
@@ -5990,28 +5978,28 @@ DrawKeybindOverlay = function()
         local value = string.upper(tostring(entry.Row and entry.Row.Value or "NONE"))
         local labelSize = 11
         local keySize = 12
-        local valueW = TextWidth(value, keySize, FontBold)
+        local valueW = TextWidth(value, keySize, Fonts.SystemBold)
         local pillH = 20
         local pillY = rowY + (rowH - pillH) / 2
 
         Text(title, labelX, TextMidY(rowY, rowH, labelSize),
-             th.Text, labelSize, FontBold, 336, 0.96, labelColumnW + 2)
+             th.Text, labelSize, Fonts.SystemBold, 336, 0.96, labelColumnW + 2)
 
         Rect(pillX, pillY, pillW, pillH, th.Accent, 337, 5, 0.13)
         Stroke(pillX, pillY, pillW, pillH, th.Accent, 338, 5, 0.42)
         Text(value,
              pillX + (pillW - valueW) / 2,
              TextMidY(pillY, pillH, keySize),
-             th.Accent, keySize, FontBold, 339, 1, valueW + 2)
+             th.Accent, keySize, Fonts.SystemBold, 339, 1, valueW + 2)
 
         rowY = rowY + rowH
     end
 
     if #list > 8 then
         local more = "+" .. tostring(#list - 8) .. " more"
-        local moreW = TextWidth(more, 8, FontBold)
+        local moreW = TextWidth(more, 8, Fonts.SystemBold)
         Text(more, x + (w - moreW) / 2, rowY + 4,
-             th.TextDim, 8, FontBold, 339, 0.68, moreW + 2)
+             th.TextDim, 8, Fonts.SystemBold, 339, 0.68, moreW + 2)
     end
 
     FrameAlpha = previousAlpha
@@ -6061,8 +6049,8 @@ local function GetPerformanceOverlayGeometry()
     local labelSize, valueSize = 10, 10
     local labelW, valueW = 0, 0
     for _, row in ipairs(rows) do
-        labelW = math.max(labelW, TextWidth(row[1], labelSize, FontBold))
-        valueW = math.max(valueW, TextWidth(row[2], valueSize, FontBold))
+        labelW = math.max(labelW, TextWidth(row[1], labelSize, Fonts.SystemBold))
+        valueW = math.max(valueW, TextWidth(row[2], valueSize, Fonts.SystemBold))
     end
     local headerH, rowH = 34, 25
     local w = math.max(158, 12 + labelW + 18 + valueW + 12)
@@ -6116,10 +6104,10 @@ DrawPerformanceOverlay = function()
 
     local header = "PERFORMANCE"
     local headerSize = 12
-    local headerW = TextWidth(header, headerSize, FontBold)
+    local headerW = TextWidth(header, headerSize, Fonts.SystemBold)
     Text(header, x + (w - headerW) / 2,
          TextMidY(y, headerH, headerSize) - 2,
-         th.Text, headerSize, FontBold, 344, 1, headerW + 2)
+         th.Text, headerSize, Fonts.SystemBold, 344, 1, headerW + 2)
 
     Line(x + 10, y + headerH - 1, x + w - 10, y + headerH - 1,
          th.Accent, 344, 1, 0.22)
@@ -6128,9 +6116,9 @@ DrawPerformanceOverlay = function()
     local valueX = x + 12 + labelW + 18
     for _, row in ipairs(rows) do
         Text(row[1], x + 12, TextMidY(rowY, rowH, 10),
-             th.TextDim, 10, FontBold, 345, 0.86, labelW + 2)
+             th.TextDim, 10, Fonts.SystemBold, 345, 0.86, labelW + 2)
         Text(row[2], valueX, TextMidY(rowY, rowH, 10),
-             th.Text, 10, FontBold, 346, 0.98, w - (valueX - x) - 12)
+             th.Text, 10, Fonts.SystemBold, 346, 0.98, w - (valueX - x) - 12)
         rowY = rowY + rowH
     end
 
@@ -6310,7 +6298,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v46.9-DYNAMIC-HUD-FONTS-HEADER"
+Library.Version       = "v46.9.1-REGISTER-FIX"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6428,65 +6416,67 @@ Library.IsBindHeld    = IsBindHeld
 Library.IsBindClicked = IsBindClicked
 
 
-local function AttachControl(parentType, methodName, ctorName)
-    local ctor = Controls[ctorName]
-    if not ctor then return end
-    parentType[methodName] = function(self, opts)
-        local obj = ctor(self, opts)
-        return obj
-    end
-end
-
-for _, parentType in ipairs({ Tab, Section }) do
-    AttachControl(parentType, "AddLabel",       "Label")
-    AttachControl(parentType, "AddDivider",     "Divider")
-    AttachControl(parentType, "AddButton",      "Button")
-    AttachControl(parentType, "AddToggle",      "Toggle")
-    AttachControl(parentType, "AddSlider",      "Slider")
-    AttachControl(parentType, "AddRangeSlider", "RangeSlider")
-    AttachControl(parentType, "AddDropdown",    "Dropdown")
-    AttachControl(parentType, "AddKeybind",     "Keybind")
-    AttachControl(parentType, "AddTextbox",     "Textbox")
-    AttachControl(parentType, "AddColorPicker", "ColorPicker")
-end
-
-
-function Tab:AddSection(title, description, opts)
-    return Section.new(self, title, description, opts)
-end
-
-
-function Tab:AddInline(weights)
-    return InlineRow.new(self, weights)
-end
-
-function Section:AddInline(weights)
-    return InlineRow.new(self, weights)
-end
-
-
-function InlineRow:AddRow(builder)
-    self.Cells[#self.Cells + 1] = builder
-    return builder
-end
-
-for _, ctrlName in ipairs({
-    "Label", "Divider", "Toggle", "Slider", "RangeSlider",
-    "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
-}) do
-    AttachControl(InlineRow, "Add" .. ctrlName, ctrlName)
-end
-
--- [FIX] allow chaining control creation: `row:AddToggle({}):AddToggle({})`
-for _, ctrlName in ipairs({
-    "Label", "Divider", "Toggle", "Slider", "RangeSlider",
-    "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
-}) do
-    local ctor = Controls[ctrlName]
-    if ctor then
-        Base["Add" .. ctrlName] = function(self, opts)
-            local obj = ctor(self.Parent, opts)
+do
+    local function AttachControl(parentType, methodName, ctorName)
+        local ctor = Controls[ctorName]
+        if not ctor then return end
+        parentType[methodName] = function(self, opts)
+            local obj = ctor(self, opts)
             return obj
+        end
+    end
+
+    for _, parentType in ipairs({ Tab, Section }) do
+        AttachControl(parentType, "AddLabel",       "Label")
+        AttachControl(parentType, "AddDivider",     "Divider")
+        AttachControl(parentType, "AddButton",      "Button")
+        AttachControl(parentType, "AddToggle",      "Toggle")
+        AttachControl(parentType, "AddSlider",      "Slider")
+        AttachControl(parentType, "AddRangeSlider", "RangeSlider")
+        AttachControl(parentType, "AddDropdown",    "Dropdown")
+        AttachControl(parentType, "AddKeybind",     "Keybind")
+        AttachControl(parentType, "AddTextbox",     "Textbox")
+        AttachControl(parentType, "AddColorPicker", "ColorPicker")
+    end
+
+
+    function Tab:AddSection(title, description, opts)
+        return Section.new(self, title, description, opts)
+    end
+
+
+    function Tab:AddInline(weights)
+        return InlineRow.new(self, weights)
+    end
+
+    function Section:AddInline(weights)
+        return InlineRow.new(self, weights)
+    end
+
+
+    function InlineRow:AddRow(builder)
+        self.Cells[#self.Cells + 1] = builder
+        return builder
+    end
+
+    for _, ctrlName in ipairs({
+        "Label", "Divider", "Toggle", "Slider", "RangeSlider",
+        "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
+    }) do
+        AttachControl(InlineRow, "Add" .. ctrlName, ctrlName)
+    end
+
+    -- [FIX] allow chaining control creation: `row:AddToggle({}):AddToggle({})`
+    for _, ctrlName in ipairs({
+        "Label", "Divider", "Toggle", "Slider", "RangeSlider",
+        "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
+    }) do
+        local ctor = Controls[ctrlName]
+        if ctor then
+            Base["Add" .. ctrlName] = function(self, opts)
+                local obj = ctor(self.Parent, opts)
+                return obj
+            end
         end
     end
 end
@@ -6509,7 +6499,7 @@ end)
 
 
 
-Library.Version = "v46.9-DYNAMIC-HUD-FONTS-HEADER"
+Library.Version = "v46.9.1-REGISTER-FIX"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
