@@ -1325,7 +1325,7 @@ local State = {
         Active = false,
         Phase = "idle",
         Time = 0,
-        Duration = 5.0,
+        Duration = 7.0,
         Progress = 0,
         RevealProgress = 0,
         RevealDuration = 0.85,
@@ -2092,11 +2092,18 @@ local function DrawStartupFrame()
 
     -- Timings are fractions of the configured loading duration, so changing
     -- startupDuration keeps the same animation proportions.
-    local duration = math.max(0.5, st.Duration or 5)
-    local logoMoveStart = duration * 0.18
-    local logoMoveEnd   = duration * 0.55
-    local titleStart    = duration * 0.46
-    local titleEnd      = duration * 0.82
+    local duration = math.max(0.5, st.Duration or 7)
+
+    -- Faster opening motion than v44. On the default 7 second loader the
+    -- logo rests centered briefly, then finishes its move at about 2.45s.
+    local logoMoveStart = duration * 0.10
+    local logoMoveEnd   = duration * 0.35
+
+    -- Typewriter starts while the logo is nearing its destination and is
+    -- guaranteed to finish by 5 seconds on the default 7 second loader,
+    -- leaving roughly two seconds to read the completed identity.
+    local titleStart    = duration * 0.30
+    local titleEnd      = math.max(titleStart + 0.5, duration - 2.0)
 
     local function Smooth01(v)
         v = math.max(0, math.min(1, v))
@@ -2126,20 +2133,23 @@ local function DrawStartupFrame()
     local finalTitleX = finalLogoX + logoSize + 12
     local titleY = y + h / 2 - 12
 
-    local titleT = Smooth01((st.Time - titleStart) /
-                            math.max(0.001, titleEnd - titleStart))
+    -- True typewriter reveal: S -> SH -> SHA -> ... rather than clipping
+    -- the finished word. Spaces are counted naturally, so any window title
+    -- works without special-casing "SHADOW UI".
+    if st.Time >= titleStart then
+        local typeDuration = math.max(0.001, titleEnd - titleStart)
+        local typeT = math.max(0, math.min(1, (st.Time - titleStart) / typeDuration))
+        local charCount = math.min(#title, math.floor(typeT * #title) + 1)
 
-    if titleT > 0.001 then
-        local fullTitleW = TextWidth(title, titleSize, FontBold)
-        local revealRoom = math.max(1, fullTitleW * titleT)
+        if typeT >= 1 then charCount = #title end
 
-        -- The text begins underneath the logo and gently slides into its final
-        -- position while its available drawing room expands from left to right.
-        local titleX = finalTitleX - (1 - titleT) * 12
-        local titleAlpha = math.min(1, titleT * 1.18)
-
-        Text(title, titleX, titleY, th.Text, titleSize, FontBold,
-             35, titleAlpha, revealRoom)
+        local typedTitle = string.sub(title, 1, charCount)
+        if typedTitle ~= "" then
+            -- Keep the finished text anchored in its final location. Each new
+            -- character simply appears at the end like a real typewriter.
+            Text(typedTitle, finalTitleX, titleY, th.Text, titleSize, FontBold,
+                 35, 1, math.max(40, w - (finalTitleX - x) - 24))
+        end
     end
 
     local railX = x + 18
@@ -5653,7 +5663,7 @@ function Library:CreateWindow(opts)
     })
     return self
 end
-Library.Version       = "v44-LOGO-TITLE-REVEAL"
+Library.Version       = "v45-TYPEWRITER-7S"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -5852,7 +5862,7 @@ end)
 
 
 
-Library.Version = "v44-LOGO-TITLE-REVEAL"
+Library.Version = "v45-TYPEWRITER-7S"
 
 -- Matcha-friendly public exports.
 -- Keep the library available through the chunk return value and through
