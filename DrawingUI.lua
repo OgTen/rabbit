@@ -1433,6 +1433,9 @@ local State = {
         BackgroundImage = nil,
         BackgroundImageSource = nil,
         BackgroundOpacity = 0.22,
+        TypewriterCount = 0,
+        TypewriterAccumulator = 0,
+        TypewriterLastTime = 0,
         StartX = 0, StartY = 0, StartW = 0, StartH = 0,
         TargetX = 0, TargetY = 0, TargetW = 0, TargetH = 0,
     },
@@ -2325,8 +2328,8 @@ local function DrawStartupFrame()
     local duration = math.max(0.5, st.Duration or 5)
     local logoMoveStart = duration * 0.055
     local logoMoveEnd   = duration * 0.235
-    local titleStart    = duration * 0.14
-    local titleEnd      = math.max(titleStart + 0.38, duration * 0.56)
+    local titleStart    = duration * 0.11
+    local titleEnd      = math.max(titleStart + 0.55, duration * 0.72)
 
     local function Smooth01(v)
         v = math.max(0, math.min(1, v))
@@ -2360,9 +2363,33 @@ local function DrawStartupFrame()
 
     if st.Time >= titleStart then
         local typeDuration = math.max(0.001, titleEnd - titleStart)
-        local typeT = math.max(0, math.min(1, (st.Time - titleStart) / typeDuration))
-        local charCount = math.min(#title, math.floor(typeT * #title) + 1)
-        if typeT >= 1 then charCount = #title end
+        local charInterval = typeDuration / math.max(1, #title)
+
+        -- Accumulate elapsed render time, but reveal at most one character on
+        -- each rendered frame. This prevents frame-time spikes from jumping
+        -- over intermediate characters on longer splash titles.
+        local now = st.Time
+        local previous = st.TypewriterLastTime or titleStart
+        if previous < titleStart then previous = titleStart end
+        local elapsed = math.max(0, now - previous)
+        st.TypewriterLastTime = now
+        st.TypewriterAccumulator = (st.TypewriterAccumulator or 0) + elapsed
+
+        if (st.TypewriterCount or 0) == 0 then
+            st.TypewriterCount = 1
+            st.TypewriterAccumulator = 0
+        elseif st.TypewriterCount < #title and st.TypewriterAccumulator >= charInterval then
+            st.TypewriterCount = st.TypewriterCount + 1
+            st.TypewriterAccumulator = st.TypewriterAccumulator - charInterval
+
+            -- Do not retain a huge backlog after a hitch. The goal is a
+            -- consistent visible typewriter, not catching up by skipping.
+            if st.TypewriterAccumulator > charInterval * 2 then
+                st.TypewriterAccumulator = charInterval
+            end
+        end
+
+        local charCount = math.min(#title, st.TypewriterCount or 0)
         typedTitle = string.sub(title, 1, charCount)
 
         if typedTitle ~= "" then
@@ -2504,6 +2531,9 @@ local function StartStartup(opts)
     st.Time = 0
     st.Progress = 0
     st.RevealProgress = 0
+    st.TypewriterCount = 0
+    st.TypewriterAccumulator = 0
+    st.TypewriterLastTime = 0
     st.Phase = "loading"
     st.Active = true
 
@@ -6591,7 +6621,7 @@ function Library:CreateWindow(opts)
     end
     return self
 end
-Library.Version       = "1.1.2"
+Library.Version       = "1.1.3"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
