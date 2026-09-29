@@ -2315,7 +2315,7 @@ local function DrawStartupFrame()
     --   1) a large framed logo begins centered
     --   2) it glides left
     --   3) the title emerges from the logo and starts typing early
-    --   4) each new character softly settles from muted gray into white
+    --   4) the typing title softly settles from muted white into pure white
     local logoSize = math.max(28, math.min(64, tonumber(st.LogoSize) or 50))
     local logoBorder = 2
     local centerLogoX = x + (w - logoSize) / 2
@@ -2366,42 +2366,25 @@ local function DrawStartupFrame()
         typedTitle = string.sub(title, 1, charCount)
 
         if typedTitle ~= "" then
-            if st.TextFade and #typedTitle > 0 then
-                -- Keep the already-settled portion pure white. Only the newest
-                -- character gets a short muted fade, so the typewriter gains
-                -- polish without using masks, rectangles, or a sweeping effect.
-                local settledCount = math.max(0, #typedTitle - 1)
-                local settledText = string.sub(typedTitle, 1, settledCount)
-                local newestChar = string.sub(typedTitle, #typedTitle, #typedTitle)
-                local room = math.max(40, w - (finalTitleX - x) - 18)
-
-                if settledText ~= "" then
-                    Text(settledText, finalTitleX, titleY, Color3.new(1, 1, 1),
-                         titleSize, Fonts.SystemBold, 35, 1, room)
-                end
-
-                if newestChar ~= "" then
-                    local charStep = math.max(0.001, (titleEnd - titleStart) / math.max(1, #title))
-                    local charIndex = math.max(1, #typedTitle)
-                    local charBorn = titleStart + ((charIndex - 1) / math.max(1, #title)) *
-                                     (titleEnd - titleStart)
-                    local fadeT = math.max(0, math.min(1, (st.Time - charBorn) /
-                                                       math.max(0.055, charStep * 0.72)))
-                    fadeT = fadeT * fadeT * (3 - 2 * fadeT)
-
-                    local startLevel = 0.58
-                    local level = startLevel + (1 - startLevel) * fadeT
-                    local charX = finalTitleX + TextWidth(settledText, titleSize, Fonts.SystemBold)
-
-                    Text(newestChar, charX, titleY, Color3.new(level, level, level),
-                         titleSize, Fonts.SystemBold, 36, 1,
-                         math.max(12, room - (charX - finalTitleX)))
-                end
-            else
-                Text(typedTitle, finalTitleX, titleY, Color3.new(1, 1, 1),
-                     titleSize, Fonts.SystemBold, 35, 1,
-                     math.max(40, w - (finalTitleX - x) - 18))
+            -- Render the typewriter as one continuous Text object. Splitting the
+            -- newest character into a second object causes visible kerning gaps
+            -- in Matcha because TextWidth does not perfectly match glyph layout.
+            --
+            -- TextFade now softly settles the whole currently-visible word from
+            -- muted white toward pure white during the early typing sequence.
+            -- Character placement therefore never depends on measured widths.
+            local level = 1
+            if st.TextFade then
+                local typeDuration = math.max(0.001, titleEnd - titleStart)
+                local fadeT = math.max(0, math.min(1, (st.Time - titleStart) /
+                                                   math.max(0.12, typeDuration * 0.30)))
+                fadeT = fadeT * fadeT * (3 - 2 * fadeT)
+                level = 0.72 + 0.28 * fadeT
             end
+
+            Text(typedTitle, finalTitleX, titleY, Color3.new(level, level, level),
+                 titleSize, Fonts.SystemBold, 35, 1,
+                 math.max(40, w - (finalTitleX - x) - 18))
         end
     end
 end
@@ -6608,7 +6591,7 @@ function Library:CreateWindow(opts)
     end
     return self
 end
-Library.Version       = "1.1.1"
+Library.Version       = "1.1.2"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
