@@ -1485,16 +1485,6 @@ local State = {
 }
 
 
-function Library:_SyncGameInput(force)
-    if type(setrobloxinput) ~= "function" then return end
-
-    local toGame = Focus.Field == nil
-    if not force and State.InputSent == toGame then return end
-
-    State.InputSent = toGame
-    pcall(setrobloxinput, toGame)
-end
-
 local function ApplyThemeOptions(themeOption)
     if type(themeOption) == "string" then
         for i, th in ipairs(Themes) do
@@ -6790,6 +6780,16 @@ end
 
 local Library = {}
 
+function Library:_SyncGameInput(force)
+    if type(setrobloxinput) ~= "function" then return end
+
+    local toGame = Focus.Field == nil
+    if not force and State.InputSent == toGame then return end
+
+    State.InputSent = toGame
+    pcall(setrobloxinput, toGame)
+end
+
 -- CreateWindow is the public constructor used by consumer scripts.
 -- The startup animation is part of the same window.
 function Library:CreateWindow(opts)
@@ -6884,7 +6884,7 @@ function Library:CreateWindow(opts)
     end
     return self
 end
-Library.Version       = "1.2.2"
+Library.Version       = "1.2.3"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -7317,7 +7317,7 @@ end)
 
 
 
-Library.Version = "1.2.2"
+Library.Version = "1.2.3"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
