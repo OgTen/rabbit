@@ -1424,6 +1424,15 @@ local State = {
         RevealDuration = 0.85,
         ShrinkDuration = 0.42,
         PopDuration = 0.72,
+        Enabled = true,
+        Shimmer = true,
+        Image = nil,
+        ImageSource = nil,
+        Title = nil,
+        LogoSize = 50,
+        BackgroundImage = nil,
+        BackgroundImageSource = nil,
+        BackgroundOpacity = 0.22,
         StartX = 0, StartY = 0, StartW = 0, StartH = 0,
         TargetX = 0, TargetY = 0, TargetW = 0, TargetH = 0,
     },
@@ -2288,33 +2297,36 @@ local function DrawStartupFrame()
     local st = State.Startup
 
     GlassSurface(x, y, w, h, rgb(14, 16, 23), 10, Layout.Corner)
+
+    -- Optional splash-only background image. It deliberately fills the complete
+    -- card so the splash can have its own artwork independently of the window.
+    if st.BackgroundImage and st.BackgroundOpacity > 0 then
+        DrawPicture(st.BackgroundImage, x, y, w, h, Layer(11),
+                    math.max(0, math.min(1, st.BackgroundOpacity)), Layout.Corner)
+        -- A quiet dark wash keeps white typography readable over bright artwork.
+        Rect(x, y, w, h, rgb(8, 10, 15), 12, Layout.Corner, 0.24)
+    else
+        HidePicture(st.BackgroundImage)
+    end
+
     DrawGlassBorder(th)
 
-    local progress = math.max(0, math.min(1, st.Progress))
-
-    -- Cinematic startup identity:
-    --   1) logo rests in the exact middle
-    --   2) logo slowly glides to its normal left-side position
-    --   3) title grows/reveals out from behind the logo
-    local logoSize = math.min(42, math.max(28, State.LogoSize + 8))
+    -- Premium identity sequence:
+    --   1) a large framed logo begins centered
+    --   2) it glides left
+    --   3) the title emerges from the logo and starts typing early
+    --   4) an optional charcoal shimmer moves over the otherwise-white title
+    local logoSize = math.max(28, math.min(64, tonumber(st.LogoSize) or 50))
+    local logoBorder = 2
     local centerLogoX = x + (w - logoSize) / 2
-    local finalLogoX = x + 18
-    local logoY = y + math.floor((h - logoSize) / 2) - 3
+    local finalLogoX = x + 16
+    local logoY = y + (h - logoSize) / 2
 
-    -- Timings are fractions of the configured loading duration, so changing
-    -- startupDuration keeps the same animation proportions.
-    local duration = math.max(0.5, st.Duration or 7)
-
-    -- Faster opening motion than v44. On the default 7 second loader the
-    -- logo rests centered briefly, then finishes its move at about 2.45s.
-    local logoMoveStart = duration * 0.10
-    local logoMoveEnd   = duration * 0.35
-
-    -- Typewriter starts while the logo is nearing its destination and is
-    -- guaranteed to finish by 5 seconds on the default 7 second loader,
-    -- leaving roughly two seconds to read the completed identity.
-    local titleStart    = duration * 0.30
-    local titleEnd      = math.max(titleStart + 0.5, duration - 2.0)
+    local duration = math.max(0.5, st.Duration or 5)
+    local logoMoveStart = duration * 0.055
+    local logoMoveEnd   = duration * 0.235
+    local titleStart    = duration * 0.14
+    local titleEnd      = math.max(titleStart + 0.38, duration * 0.56)
 
     local function Smooth01(v)
         v = math.max(0, math.min(1, v))
@@ -2325,54 +2337,58 @@ local function DrawStartupFrame()
                            math.max(0.001, logoMoveEnd - logoMoveStart))
     local logoX = centerLogoX + (finalLogoX - centerLogoX) * moveT
 
-    local logoReady = DrawPicture(State.Logo, logoX, logoY,
-                                  logoSize, logoSize,
-                                  Layer(34), 1, 7)
+    -- Visible neutral frame around the image; intentionally not accent-coloured.
+    Rect(logoX - logoBorder, logoY - logoBorder,
+         logoSize + logoBorder * 2, logoSize + logoBorder * 2,
+         rgb(95, 99, 111), 30, 9, 0.88)
+    Rect(logoX, logoY, logoSize, logoSize, rgb(17, 19, 26), 31, 7, 1)
 
-    -- If the asynchronous logo has not arrived yet, retain the existing
-    -- minimal mark rather than leaving the loader visually empty.
+    local logoReady = DrawPicture(st.Image or State.Logo, logoX, logoY,
+                                  logoSize, logoSize, Layer(34), 1, 7)
+
     if not logoReady then
-        local pulse = 0.72 + math.sin(os.clock() * 2.4) * 0.16
-        Rect(centerLogoX, y + h / 2 - 3, logoSize, 2,
-             th.AccentA, 30, 1, pulse)
-        Rect(centerLogoX + logoSize * 0.20, y + h / 2 + 2,
-             logoSize * 0.60, 1, th.AccentB, 31, 1, pulse * 0.65)
+        local pulse = 0.68 + math.sin(os.clock() * 2.0) * 0.10
+        Rect(logoX + logoSize * 0.18, logoY + logoSize * 0.48,
+             logoSize * 0.64, 2, th.TextDim, 32, 1, pulse)
     end
 
-    local title = State.WindowTitle or "DRAWING UI"
-    local titleSize = 15
-    local finalTitleX = finalLogoX + logoSize + 12
-    local titleY = y + h / 2 - 12
+    local title = tostring(st.Title or State.WindowTitle or "DRAWING UI")
+    local titleSize = 16
+    local finalTitleX = finalLogoX + logoSize + 15
+    local titleY = math.floor(y + (h - titleSize) / 2 + 0.5)
+    local typedTitle = ""
 
-    -- True typewriter reveal: S -> SH -> SHA -> ... rather than clipping
-    -- the finished word. Spaces are counted naturally, so any window title
-    -- works without special-casing the default window title.
     if st.Time >= titleStart then
         local typeDuration = math.max(0.001, titleEnd - titleStart)
         local typeT = math.max(0, math.min(1, (st.Time - titleStart) / typeDuration))
         local charCount = math.min(#title, math.floor(typeT * #title) + 1)
-
         if typeT >= 1 then charCount = #title end
+        typedTitle = string.sub(title, 1, charCount)
 
-        local typedTitle = string.sub(title, 1, charCount)
         if typedTitle ~= "" then
-            -- Keep the finished text anchored in its final location. Each new
-            -- character simply appears at the end like a real typewriter.
-            Text(typedTitle, finalTitleX, titleY, th.Text, titleSize, Fonts.SystemBold,
-                 35, 1, math.max(40, w - (finalTitleX - x) - 24))
+            Text(typedTitle, finalTitleX, titleY, Color3.new(1, 1, 1),
+                 titleSize, Fonts.SystemBold, 35, 1,
+                 math.max(40, w - (finalTitleX - x) - 18))
         end
     end
 
-    local railX = x + 18
-    local railW = math.max(70, w - 36)
-    local railY = y + h - 13
-
-    Rect(railX, railY, railW, 2, th.Divider, 36, 1, 0.30)
-    if progress > 0 then
-        Rect(railX, railY, math.max(1, railW * progress), 2,
-             th.AccentA, 37, 1, 0.92)
-        Circle(railX + railW * progress, railY + 1, 2.2,
-               th.Text, 38, true, 1, 12, 0.92)
+    -- Restrained dark shimmer. The title remains white; a narrow charcoal wash
+    -- passes across only its measured width after the first characters appear.
+    if st.Shimmer and typedTitle ~= "" and st.Time >= titleStart + duration * 0.08 then
+        local fullW = math.min(TextWidth(title, titleSize, Fonts.SystemBold),
+                               math.max(24, w - (finalTitleX - x) - 18))
+        if fullW > 8 then
+            local shimmerCycle = math.max(0.9, duration * 0.34)
+            local shimmerT = ((st.Time - titleStart) % shimmerCycle) / shimmerCycle
+            local shimmerW = math.max(8, math.min(18, fullW * 0.16))
+            local shimmerX = finalTitleX - shimmerW + (fullW + shimmerW * 2) * shimmerT
+            local clipL = math.max(finalTitleX, shimmerX)
+            local clipR = math.min(finalTitleX + fullW, shimmerX + shimmerW)
+            if clipR > clipL then
+                Rect(clipL, titleY - 2, clipR - clipL, titleSize + 4,
+                     rgb(38, 40, 46), 36, 2, 0.30)
+            end
+        end
     end
 end
 
@@ -2395,7 +2411,7 @@ local function TickStartup(dt)
     if st.Phase == "shrink" then
         local t = math.min(st.Time / st.ShrinkDuration, 1)
         local eased = t * t * (3 - 2 * t)
-        local minW, minH = 10, 3
+        local minW, minH = 34, 5
         State.W = st.StartW + (minW - st.StartW) * eased
         State.H = st.StartH + (minH - st.StartH) * eased
         State.X = st.StartX + (st.StartW - State.W) / 2
@@ -2414,7 +2430,7 @@ local function TickStartup(dt)
         local t = math.min(st.Time / st.PopDuration, 1)
         local c1, c3 = 1.32, 2.32
         local eased = 1 + c3 * ((t - 1) ^ 3) + c1 * ((t - 1) ^ 2)
-        local minW, minH = 10, 3
+        local minW, minH = 34, 5
         State.W = minW + (st.TargetW - minW) * eased
         State.H = minH + (st.TargetH - minH) * eased
         State.X = st.TargetX + (st.TargetW - State.W) / 2
@@ -2445,18 +2461,66 @@ local function StartStartup(opts)
     local st = State.Startup
     local vp = Camera.ViewportSize
 
-    st.Duration = math.max(0.5, opts.Duration or 2.0)
+    st.Enabled = opts.Enabled ~= false
+    st.Duration = math.max(0.5, tonumber(opts.Duration) or 5.0)
+    st.Shimmer = opts.Shimmer ~= false
+    st.Title = opts.Title ~= nil and tostring(opts.Title) or State.WindowTitle
+    st.LogoSize = math.max(28, math.min(64, tonumber(opts.LogoSize) or 50))
+    st.BackgroundOpacity = tonumber(opts.BackgroundOpacity) or 0.22
+    if st.BackgroundOpacity > 1 then st.BackgroundOpacity = st.BackgroundOpacity / 100 end
+    st.BackgroundOpacity = math.max(0, math.min(1, st.BackgroundOpacity))
+
+    if opts.Image ~= nil and opts.Image ~= st.ImageSource then
+        HidePicture(st.Image)
+        st.ImageSource = opts.Image
+        st.Image = LoadPicture(opts.Image, "splash_logo")
+    elseif opts.Image == nil then
+        HidePicture(st.Image)
+        st.Image = nil
+        st.ImageSource = nil
+    end
+
+    if opts.BackgroundImage ~= nil and opts.BackgroundImage ~= st.BackgroundImageSource then
+        HidePicture(st.BackgroundImage)
+        st.BackgroundImageSource = opts.BackgroundImage
+        st.BackgroundImage = LoadPicture(opts.BackgroundImage, "splash_background")
+    elseif opts.BackgroundImage == nil then
+        HidePicture(st.BackgroundImage)
+        st.BackgroundImage = nil
+        st.BackgroundImageSource = nil
+    end
+
+    st.TargetW, st.TargetH = State.W, State.H
+    st.TargetX, st.TargetY = State.X, State.Y
+
+    if not st.Enabled then
+        st.Active = false
+        st.Phase = "done"
+        st.Progress = 1
+        st.RevealProgress = 1
+        State.Visible = 1
+        State.Open = true
+        State.RailOpen = 1
+        return
+    end
+
     st.Time = 0
     st.Progress = 0
     st.RevealProgress = 0
     st.Phase = "loading"
     st.Active = true
 
-    st.TargetW, st.TargetH = State.W, State.H
-    st.TargetX, st.TargetY = State.X, State.Y
+    local splashW, splashH = 330, 86
+    local size = opts.Size
+    if type(size) == "userdata" or type(size) == "table" then
+        splashW = tonumber(size.X or size.x or size[1]) or splashW
+        splashH = tonumber(size.Y or size.y or size[2]) or splashH
+    end
+    splashW = math.max(220, math.min(560, splashW))
+    splashH = math.max(st.LogoSize + 18, math.min(160, splashH))
 
-    st.StartW = math.min(285, math.max(250, st.TargetW * 0.36))
-    st.StartH = 80
+    st.StartW = splashW
+    st.StartH = splashH
     st.StartX = math.floor((vp.X - st.StartW) / 2)
     st.StartY = math.floor((vp.Y - st.StartH) / 2)
 
@@ -5905,11 +5969,9 @@ local function Render()
 
     if startupIsLoading then
         HidePicture(State.BackgroundImage)
-        -- Hard-lock the loading frame height to exactly 80px every frame.
-        -- This prevents any other window/layout logic from restoring the
-        -- normal window height while the loading phase is active.
+        -- Keep the configured splash dimensions stable throughout its hold.
         State.W = State.Startup.StartW
-        State.H = 80
+        State.H = State.Startup.StartH
         State.X = State.Startup.StartX
         State.Y = State.Startup.StartY
 
@@ -5925,12 +5987,16 @@ local function Render()
         HidePicture(State.BackgroundImage)
         Geometry.Recalculate()
         ResetPool()
+        HidePicture(State.Startup.Image)
+        HidePicture(State.Startup.BackgroundImage)
         local radius = math.min(Layout.Corner, math.max(1, State.H / 2))
         GlassSurface(State.X, State.Y, State.W, State.H, rgb(14, 16, 23), 10, radius)
-        Stroke(State.X, State.Y, State.W, State.H, Color3.new(1, 1, 1), 20, radius, 0.82)
-        Circle(State.X + State.W / 2, State.Y + State.H / 2,
-               math.max(1.5, math.min(4, State.H * 0.18)),
-               State.Theme.AccentA, 31, true, 1, 12, 0.95)
+        Stroke(State.X, State.Y, State.W, State.H, Color3.new(1, 1, 1), 20, radius, 0.72)
+        if State.H <= 12 then
+            Rect(State.X + 5, State.Y + State.H / 2 - 1,
+                 math.max(1, State.W - 10), 2,
+                 State.Theme.TextDim, 31, 1, 0.58)
+        end
         HideUnused()
         return
     end
@@ -5944,9 +6010,11 @@ local function Render()
         local t = math.min(State.Startup.Time / State.Startup.PopDuration, 1)
         local flash = (1 - t) * (1 - t)
         if flash > 0.002 then
-            Circle(State.X + State.W / 2, State.Y + State.H / 2,
-                   3 + 8 * t, State.Theme.AccentA,
-                   45, true, 1, 18, 0.55 * flash)
+            local flashW = math.max(18, math.min(State.W * 0.22, 90 + 70 * t))
+            Rect(State.X + (State.W - flashW) / 2,
+                 State.Y + State.H / 2 - 1,
+                 flashW, 2, State.Theme.TextDim,
+                 45, 1, 0.34 * flash)
         end
         HideUnused()
         return
@@ -6495,12 +6563,34 @@ function Library:CreateWindow(opts)
 
     EnsureGlobalSettingsTab(self)
 
-    StartStartup({
-        Duration = opts.StartupDuration or opts.startupDuration or opts.Duration or opts.duration or 5.0,
-    })
+    local splashOption = opts.Splash
+    if splashOption == nil then splashOption = opts.splash end
+
+    if splashOption == false then
+        StartStartup({ Enabled = false })
+    else
+        local splash = type(splashOption) == "table" and splashOption or {}
+        local shimmerValue = splash.Shimmer
+        if shimmerValue == nil then shimmerValue = splash.shimmer end
+        if shimmerValue == nil then shimmerValue = true end
+
+        StartStartup({
+            Enabled = true,
+            Duration = splash.Duration or splash.duration
+                or opts.StartupDuration or opts.startupDuration
+                or opts.Duration or opts.duration or 5.0,
+            Size = splash.Size or splash.size,
+            Image = splash.Image or splash.image,
+            Title = splash.Title or splash.title,
+            LogoSize = splash.LogoSize or splash.logoSize or splash.ImageSize or splash.imageSize or 50,
+            Shimmer = shimmerValue,
+            BackgroundImage = splash.BackgroundImage or splash.backgroundImage,
+            BackgroundOpacity = splash.BackgroundOpacity or splash.backgroundOpacity or 0.22,
+        })
+    end
     return self
 end
-Library.Version       = "1.0.0"
+Library.Version       = "1.1.0"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
