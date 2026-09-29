@@ -1425,7 +1425,7 @@ local State = {
         ShrinkDuration = 0.42,
         PopDuration = 0.72,
         Enabled = true,
-        Shimmer = true,
+        TextFade = true,
         Image = nil,
         ImageSource = nil,
         Title = nil,
@@ -2315,7 +2315,7 @@ local function DrawStartupFrame()
     --   1) a large framed logo begins centered
     --   2) it glides left
     --   3) the title emerges from the logo and starts typing early
-    --   4) an optional charcoal shimmer moves over the otherwise-white title
+    --   4) each new character softly settles from muted gray into white
     local logoSize = math.max(28, math.min(64, tonumber(st.LogoSize) or 50))
     local logoBorder = 2
     local centerLogoX = x + (w - logoSize) / 2
@@ -2366,27 +2366,41 @@ local function DrawStartupFrame()
         typedTitle = string.sub(title, 1, charCount)
 
         if typedTitle ~= "" then
-            Text(typedTitle, finalTitleX, titleY, Color3.new(1, 1, 1),
-                 titleSize, Fonts.SystemBold, 35, 1,
-                 math.max(40, w - (finalTitleX - x) - 18))
-        end
-    end
+            if st.TextFade and #typedTitle > 0 then
+                -- Keep the already-settled portion pure white. Only the newest
+                -- character gets a short muted fade, so the typewriter gains
+                -- polish without using masks, rectangles, or a sweeping effect.
+                local settledCount = math.max(0, #typedTitle - 1)
+                local settledText = string.sub(typedTitle, 1, settledCount)
+                local newestChar = string.sub(typedTitle, #typedTitle, #typedTitle)
+                local room = math.max(40, w - (finalTitleX - x) - 18)
 
-    -- Restrained dark shimmer. The title remains white; a narrow charcoal wash
-    -- passes across only its measured width after the first characters appear.
-    if st.Shimmer and typedTitle ~= "" and st.Time >= titleStart + duration * 0.08 then
-        local fullW = math.min(TextWidth(title, titleSize, Fonts.SystemBold),
-                               math.max(24, w - (finalTitleX - x) - 18))
-        if fullW > 8 then
-            local shimmerCycle = math.max(0.9, duration * 0.34)
-            local shimmerT = ((st.Time - titleStart) % shimmerCycle) / shimmerCycle
-            local shimmerW = math.max(8, math.min(18, fullW * 0.16))
-            local shimmerX = finalTitleX - shimmerW + (fullW + shimmerW * 2) * shimmerT
-            local clipL = math.max(finalTitleX, shimmerX)
-            local clipR = math.min(finalTitleX + fullW, shimmerX + shimmerW)
-            if clipR > clipL then
-                Rect(clipL, titleY - 2, clipR - clipL, titleSize + 4,
-                     rgb(38, 40, 46), 36, 2, 0.30)
+                if settledText ~= "" then
+                    Text(settledText, finalTitleX, titleY, Color3.new(1, 1, 1),
+                         titleSize, Fonts.SystemBold, 35, 1, room)
+                end
+
+                if newestChar ~= "" then
+                    local charStep = math.max(0.001, (titleEnd - titleStart) / math.max(1, #title))
+                    local charIndex = math.max(1, #typedTitle)
+                    local charBorn = titleStart + ((charIndex - 1) / math.max(1, #title)) *
+                                     (titleEnd - titleStart)
+                    local fadeT = math.max(0, math.min(1, (st.Time - charBorn) /
+                                                       math.max(0.055, charStep * 0.72)))
+                    fadeT = fadeT * fadeT * (3 - 2 * fadeT)
+
+                    local startLevel = 0.58
+                    local level = startLevel + (1 - startLevel) * fadeT
+                    local charX = finalTitleX + TextWidth(settledText, titleSize, Fonts.SystemBold)
+
+                    Text(newestChar, charX, titleY, Color3.new(level, level, level),
+                         titleSize, Fonts.SystemBold, 36, 1,
+                         math.max(12, room - (charX - finalTitleX)))
+                end
+            else
+                Text(typedTitle, finalTitleX, titleY, Color3.new(1, 1, 1),
+                     titleSize, Fonts.SystemBold, 35, 1,
+                     math.max(40, w - (finalTitleX - x) - 18))
             end
         end
     end
@@ -2463,7 +2477,7 @@ local function StartStartup(opts)
 
     st.Enabled = opts.Enabled ~= false
     st.Duration = math.max(0.5, tonumber(opts.Duration) or 5.0)
-    st.Shimmer = opts.Shimmer ~= false
+    st.TextFade = opts.TextFade ~= false
     st.Title = opts.Title ~= nil and tostring(opts.Title) or State.WindowTitle
     st.LogoSize = math.max(28, math.min(64, tonumber(opts.LogoSize) or 50))
     st.BackgroundOpacity = tonumber(opts.BackgroundOpacity) or 0.22
@@ -6570,9 +6584,13 @@ function Library:CreateWindow(opts)
         StartStartup({ Enabled = false })
     else
         local splash = type(splashOption) == "table" and splashOption or {}
-        local shimmerValue = splash.Shimmer
-        if shimmerValue == nil then shimmerValue = splash.shimmer end
-        if shimmerValue == nil then shimmerValue = true end
+        local textFadeValue = splash.TextFade
+        if textFadeValue == nil then textFadeValue = splash.textFade end
+        -- Compatibility with the v1.1.0 splash option: shimmer now controls
+        -- the cleaner character fade rather than the removed sweep effect.
+        if textFadeValue == nil then textFadeValue = splash.Shimmer end
+        if textFadeValue == nil then textFadeValue = splash.shimmer end
+        if textFadeValue == nil then textFadeValue = true end
 
         StartStartup({
             Enabled = true,
@@ -6583,14 +6601,14 @@ function Library:CreateWindow(opts)
             Image = splash.Image or splash.image,
             Title = splash.Title or splash.title,
             LogoSize = splash.LogoSize or splash.logoSize or splash.ImageSize or splash.imageSize or 50,
-            Shimmer = shimmerValue,
+            TextFade = textFadeValue,
             BackgroundImage = splash.BackgroundImage or splash.backgroundImage,
             BackgroundOpacity = splash.BackgroundOpacity or splash.backgroundOpacity or 0.22,
         })
     end
     return self
 end
-Library.Version       = "1.1.0"
+Library.Version       = "1.1.1"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
