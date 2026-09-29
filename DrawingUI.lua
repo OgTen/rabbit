@@ -1,6 +1,6 @@
 --[[
 ================================================================================
-  DRAWING UI LIBRARY  ::  1.0.0
+  DRAWING UI LIBRARY  ::  1.2.0
   ------------------------------------------------------------------------------
   A modern, resizable, inline-capable Drawing-based UI library for Matcha.
   Designed from scratch with reference to REM UI and INS-UI, but:
@@ -1355,12 +1355,23 @@ local function SetFocus(field)
     if field then
         field.Caret  = field.Caret or #(field.Value or "")
         field.Anchor = nil
+
+        -- Matcha/INSui-compatible input capture: while DrawingUI owns a text
+        -- field, Roblox must not receive those same keyboard presses.
+        if type(setrobloxinput) == "function" then
+            pcall(setrobloxinput, false)
+        end
     end
 end
 
 local function ClearFocus()
     if Focus.Field and Focus.Field.OnBlur then Focus.Field.OnBlur() end
     Focus.Field = nil
+
+    -- Always restore game input when text editing ends.
+    if type(setrobloxinput) == "function" then
+        pcall(setrobloxinput, true)
+    end
 end
 
 local function TickFocus()
@@ -1449,7 +1460,13 @@ local State = {
         BorderComet = true,
         WindowOpacity = 82,
         CompactOverlay = false,
+        ToggleStyle = "Switch",
+        ConfigName = "default",
     },
+
+    -- overlay reveal sequencing
+    OverlayRevealTime = 0,
+    OverlayNextRevealAt = 1.0,
 
     -- window identity / appearance
     WindowTitle    = "Window",
@@ -2316,8 +2333,8 @@ local function DrawStartupFrame()
 
     -- Premium identity sequence:
     --   1) a large framed logo begins centered
-    --   2) it glides left
-    --   3) the title emerges from the logo and starts typing early
+    --   2) it glides left and fully settles
+    --   3) after a short pause, the title emerges from the logo and types
     --   4) the typing title softly settles from muted white into pure white
     local logoSize = math.max(28, math.min(64, tonumber(st.LogoSize) or 50))
     local logoBorder = 2
@@ -2328,8 +2345,12 @@ local function DrawStartupFrame()
     local duration = math.max(0.5, st.Duration or 5)
     local logoMoveStart = duration * 0.055
     local logoMoveEnd   = duration * 0.235
-    local titleStart    = duration * 0.11
-    local titleEnd      = math.max(titleStart + 0.55, duration * 0.72)
+
+    -- The title is choreographed from the logo movement rather than from an
+    -- unrelated percentage of the splash duration. Let the logo fully settle,
+    -- breathe for a moment, then begin typing.
+    local titleStart    = logoMoveEnd + math.max(0.07, math.min(0.14, duration * 0.018))
+    local titleEnd      = math.max(titleStart + 0.55, duration * 0.74)
 
     local function Smooth01(v)
         v = math.max(0, math.min(1, v))
@@ -2751,6 +2772,7 @@ local function DrawTitleBar(title, subtitle)
         end
     end
 
+
     -- Clicking the title capsule toggles expansion. Clicking elsewhere on the
     -- top strip retains the normal window drag behaviour.
     local titleHitX = islandCX - collapsedW * 0.5
@@ -3047,6 +3069,7 @@ function Base.New(kind, parent, opts)
         Tooltip     = opts.Tooltip or "",
         Hidden      = false,
         Enabled     = true,
+        ConfigKey   = opts.ConfigKey or opts.configKey or opts.Flag or opts.flag,
         _listeners  = {},
         _hover      = 0,
         _press      = 0,
@@ -3279,8 +3302,9 @@ Register("Toggle", function(parent, opts)
 
     function self:Draw(x, y, w)
         local th = State.Theme
-        local trackW = Layout.ToggleW
-        local trackH = Layout.ToggleH
+        local checkbox = string.lower(tostring(State.Settings.ToggleStyle or "Switch")) == "checkbox"
+        local trackW = checkbox and 18 or Layout.ToggleW
+        local trackH = checkbox and 18 or Layout.ToggleH
         local knob   = Layout.ToggleKnob
 
         local trackX = x + w - trackW
@@ -3293,20 +3317,32 @@ Register("Toggle", function(parent, opts)
         self._knob = Approach(self._knob, target, 22, State.Delta)
         if math.abs(self._knob - target) < 0.01 then self._knob = target end
 
-        -- track background
-        local trackColor = mix(th.Track, th.Accent, self._knob)
-        local trackAlpha = 0.75 + 0.25 * self._hover
-        Rect(trackX, trackY, trackW, trackH, trackColor, 52,
-             trackH / 2, trackAlpha)
-        Stroke(trackX, trackY, trackW, trackH, th.Stroke, 53,
-               trackH / 2, 0.5)
+        if checkbox then
+            local fill = mix(th.PanelHi, th.Accent, self._knob)
+            Rect(trackX, trackY, trackW, trackH, fill, 52, 4, 0.82 + 0.12 * self._hover)
+            Stroke(trackX, trackY, trackW, trackH,
+                   self.Value and th.AccentA or th.Stroke, 53, 4,
+                   self.Value and 0.92 or 0.62)
+            -- Fixed check geometry every frame; alpha alone represents state.
+            local checkA = self._knob
+            Bar(trackX + 4, trackY + 9, trackX + 7, trackY + 12,
+                1.6, th.Text, 54, checkA)
+            Bar(trackX + 7, trackY + 12, trackX + 14, trackY + 5,
+                1.6, th.Text, 54, checkA)
+        else
+            local trackColor = mix(th.Track, th.Accent, self._knob)
+            local trackAlpha = 0.75 + 0.25 * self._hover
+            Rect(trackX, trackY, trackW, trackH, trackColor, 52,
+                 trackH / 2, trackAlpha)
+            Stroke(trackX, trackY, trackW, trackH, th.Stroke, 53,
+                   trackH / 2, 0.5)
 
-        -- knob
-        local knobX = trackX + 2 + (trackW - knob - 4) * self._knob
-        local knobY = trackY + (trackH - knob) / 2
-        local knobColor = mix(th.TextDim, th.Text, self._knob)
-        Circle(knobX + knob / 2, knobY + knob / 2, knob / 2,
-               knobColor, 54, true, 1, 18, 1)
+            local knobX = trackX + 2 + (trackW - knob - 4) * self._knob
+            local knobY = trackY + (trackH - knob) / 2
+            local knobColor = mix(th.TextDim, th.Text, self._knob)
+            Circle(knobX + knob / 2, knobY + knob / 2, knob / 2,
+                   knobColor, 54, true, 1, 18, 1)
+        end
 
         -- title
         if self.Title ~= "" then
@@ -3330,14 +3366,81 @@ Register("Toggle", function(parent, opts)
 
     function self:Input(x, y, w)
         if not self.Enabled then return end
-        local trackW = Layout.ToggleW
-        local trackH = Layout.ToggleH
+        local checkbox = string.lower(tostring(State.Settings.ToggleStyle or "Switch")) == "checkbox"
+        local trackW = checkbox and 18 or Layout.ToggleW
+        local trackH = checkbox and 18 or Layout.ToggleH
         local trackX = x + w - trackW
         local trackY = y + (self.Height - trackH) / 2
 
         if MouseIn(trackX, trackY, trackW, trackH) and Input.Click then
             Input.Click = false
             self:SetValue(not self.Value)
+        end
+    end
+
+    return self
+end)
+
+-- ============================================================================
+--  RADIO  --  mutually exclusive option group
+-- ============================================================================
+
+Register("Radio", function(parent, opts)
+    opts = opts or {}
+    local self = Base.New("Radio", parent, opts)
+    self.Options = opts.Options or opts.options or {}
+    self.Value = opts.Default or opts.default or self.Options[1]
+    self.Callback = opts.Callback or opts.callback
+    self.RowH = 24
+    self.Height = math.max(28, (#self.Options * self.RowH) + (self.Title ~= "" and 24 or 4))
+
+    function self:GetValue() return self.Value end
+
+    function self:SetValue(v, silent)
+        local valid = false
+        for _, option in ipairs(self.Options) do
+            if option == v then valid = true break end
+        end
+        if not valid or self.Value == v then return end
+        self.Value = v
+        if not silent then
+            if self.Callback then pcall(self.Callback, v) end
+            self:_Fire(v)
+        end
+    end
+
+    function self:Draw(x, y, w)
+        local th = State.Theme
+        local top = y
+        if self.Title ~= "" then
+            Text(self.Title, x, y + 2, th.Text, Layout.TextSize,
+                 Fonts.System, 51, self.Enabled and 0.92 or 0.4, w)
+            top = y + 23
+        end
+
+        for i, option in ipairs(self.Options) do
+            local cy = top + (i - 1) * self.RowH + self.RowH / 2
+            local selected = self.Value == option
+            local hover = MouseIn(x, top + (i - 1) * self.RowH, w, self.RowH) and self.Enabled
+            local ring = selected and th.AccentA or th.Stroke
+            Circle(x + 9, cy, 7, ring, 52, false, 1.5, 18, hover and 0.95 or 0.72)
+            Circle(x + 9, cy, 3.5, th.AccentA, 53, true, 1, 18, selected and 1 or 0)
+            Text(tostring(option), x + 24, cy - Layout.TextSize / 2,
+                 selected and th.Text or th.TextDim, Layout.TextSize,
+                 Fonts.System, 53, self.Enabled and 0.95 or 0.4, w - 24)
+        end
+    end
+
+    function self:Input(x, y, w)
+        if not self.Enabled then return end
+        local top = y + (self.Title ~= "" and 23 or 0)
+        for i, option in ipairs(self.Options) do
+            local ry = top + (i - 1) * self.RowH
+            if MouseIn(x, ry, w, self.RowH) and Input.Click then
+                Input.Click = false
+                self:SetValue(option)
+                return
+            end
         end
     end
 
@@ -3689,13 +3792,13 @@ local function DrawSection(section, x, y, w)
     if clippedH <= 0 then return end
 
     -- One continuous frosted card contains both section identity and controls.
-    local fullCardVisible = clippedTop == y and clippedBottom == y + totalH
+    -- Preserve the section's rounded identity while it moves through the
+    -- viewport. Matcha has no scissor rectangle, so the visible card geometry
+    -- is shortened, but it should never visually turn into a square card.
     FrostedSurface(x, clippedTop, w, clippedH,
-                   State.Theme.Panel, 40,
-                   fullCardVisible and Layout.SectionCorner or 0)
+                   State.Theme.Panel, 40, Layout.SectionCorner)
     Stroke(x, clippedTop, w, clippedH,
-           State.Theme.Stroke, 41,
-           fullCardVisible and Layout.SectionCorner or 0, 0.42)
+           State.Theme.Stroke, 41, Layout.SectionCorner, 0.42)
 
     local headerVisible = (y >= viewportTop and y + headerH <= viewportBottom)
     if headerVisible then
@@ -4632,7 +4735,7 @@ end)
 
 -- ============================================================================
 --  PART 5 COMPLETE
---  Next: PART 6 -- ColorPicker, Section sub-tabs, Search/Spotlight
+--  Next: PART 6 -- ColorPicker and Section sub-tabs
 -- ============================================================================
 
 -- ============================================================================
@@ -5089,6 +5192,16 @@ local function DrawContent()
 
     local items, contentH = BuildContentLayout(tab, viewportTop, halfW)
     tab.MaxScroll = math.max(0, contentH - viewportH)
+    if tab._SearchTarget then
+        for _, item in ipairs(items) do
+            if item.row == tab._SearchTarget then
+                tab.ScrollTo = Clamp(item.y - viewportTop, 0, tab.MaxScroll)
+                tab.Scroll = tab.ScrollTo
+                break
+            end
+        end
+        tab._SearchTarget = nil
+    end
     TickScroll(tab, State.Delta)
     HandleWheel(tab)
 
@@ -5645,6 +5758,8 @@ function HUDBox.new(opts)
         Pin         = false,
         _drag       = nil,
         _hover      = 0,
+        _reveal     = 0,
+        _revealOrder = #HUDBoxes + 1,
     }, HUDBox)
 
     if self.H then self.H = math.max(48, self.H) end
@@ -5654,7 +5769,15 @@ function HUDBox.new(opts)
 end
 
 function HUDBox:SetVisible(v)
-    self.Visible = v and true or false
+    local nextVisible = v and true or false
+    if nextVisible and not self.Visible then
+        self._reveal = 0
+        local now = State.OverlayRevealTime or 0
+        local queued = math.max(now + 0.5, State.OverlayNextRevealAt or 0)
+        self._revealAt = queued
+        State.OverlayNextRevealAt = queued + 0.5
+    end
+    self.Visible = nextVisible
     if not self.Visible then self._drag = nil end
     return self
 end
@@ -5778,7 +5901,19 @@ local function DrawHUDBoxes()
     FrameAlpha = 1
 
     for _, box in ipairs(HUDBoxes) do
-        if box.Visible then
+        do
+            local revealAt = box._revealAt
+            if revealAt == nil then
+                revealAt = math.max(0, (box._revealOrder + 1) * 0.5)
+            end
+            local revealTarget = (box.Visible and (State.OverlayRevealTime or 0) >= revealAt) and 1 or 0
+            box._reveal = State.NoAnim and revealTarget
+                or Approach(box._reveal or 0, revealTarget, 14, State.Delta)
+            if math.abs((box._reveal or 0) - revealTarget) < 0.01 then box._reveal = revealTarget end
+
+            local boxAlpha = box._reveal or 0
+            FrameAlpha = boxAlpha
+
             local headerH = 34
             local padX = 12
             local contentPadY = 4
@@ -5845,7 +5980,8 @@ local function DrawHUDBoxes()
             local hover = MouseIn(box.X, box.Y, boxW, totalH)
             box._hover = Approach(box._hover, hover and 1 or 0, 16, State.Delta)
 
-            if hover and Input.Click and State.Open and State.Visible >= 0.50 then
+            if box.Visible and boxAlpha > 0.95
+               and hover and Input.Click and State.Open and State.Visible >= 0.50 then
                 box._drag = { gx = Input.X - box.X, gy = Input.Y - box.Y }
                 Input.Click = false
             end
@@ -5897,8 +6033,7 @@ local function DrawHUDBoxes()
                     end
                 end
             end
-        else
-            box._drag = nil
+            if not box.Visible then box._drag = nil end
         end
     end
 
@@ -5988,6 +6123,9 @@ local function Render()
     TickVisibility(State.Delta)
     TickTheme(State.Delta)
     TickStartup(State.Delta)
+    if not State.Startup.Active then
+        State.OverlayRevealTime = (State.OverlayRevealTime or 0) + State.Delta
+    end
 
     local startupIsLoading = State.Startup.Active and State.Startup.Phase == "loading"
     local startupIsShrink = State.Startup.Active and State.Startup.Phase == "shrink"
@@ -6181,6 +6319,7 @@ local KeybindHUD = {
     Dragging = false,
     DragOffsetX = 0,
     DragOffsetY = 0,
+    Reveal = 0,
 }
 
 local function GetKeybindOverlayGeometry()
@@ -6218,6 +6357,7 @@ end
 
 UpdateKeybindOverlayInput = function()
     if State.Settings and State.Settings.KeybindOverlay == false then return end
+    if (KeybindHUD.Reveal or 0) < 0.95 then return end
     if not State.Open or State.Visible < 0.50 then
         KeybindHUD.Dragging = false
         return
@@ -6247,13 +6387,16 @@ UpdateKeybindOverlayInput = function()
 end
 
 DrawKeybindOverlay = function()
-    if State.Settings and State.Settings.KeybindOverlay == false then return end
+    local target = (State.Settings and State.Settings.KeybindOverlay ~= false
+                    and (State.OverlayRevealTime or 0) >= 0) and 1 or 0
+    KeybindHUD.Reveal = State.NoAnim and target
+        or Approach(KeybindHUD.Reveal or 0, target, 14, State.Delta)
     local th = State.Theme
     local x, y, w, h, headerH, rowH, list, labelColumnW, pillW =
         GetKeybindOverlayGeometry()
 
     local previousAlpha = FrameAlpha
-    FrameAlpha = 1
+    FrameAlpha = KeybindHUD.Reveal or 0
 
     Rect(x, y, w, h, rgb(13, 16, 23), 331, 9, 0.96)
     Stroke(x, y, w, h, th.Accent, 332, 9, 0.88)
@@ -6328,6 +6471,7 @@ local PerformanceHUD = {
     FrameMS = 16.7,
     AccumTime = 0,
     AccumFrames = 0,
+    Reveal = 0,
 }
 
 TickPerformanceOverlay = function(dt)
@@ -6371,6 +6515,7 @@ end
 
 UpdatePerformanceOverlayInput = function()
     if State.Settings and State.Settings.PerformanceOverlay == false then return end
+    if (PerformanceHUD.Reveal or 0) < 0.95 then return end
     if not State.Open or State.Visible < 0.50 then
         PerformanceHUD.Dragging = false
         return
@@ -6400,13 +6545,16 @@ UpdatePerformanceOverlayInput = function()
 end
 
 DrawPerformanceOverlay = function()
-    if State.Settings and State.Settings.PerformanceOverlay == false then return end
+    local target = (State.Settings and State.Settings.PerformanceOverlay ~= false
+                    and (State.OverlayRevealTime or 0) >= 0.5) and 1 or 0
+    PerformanceHUD.Reveal = State.NoAnim and target
+        or Approach(PerformanceHUD.Reveal or 0, target, 14, State.Delta)
     local th = State.Theme
     local x, y, w, h, headerH, rowH, rows, labelW =
         GetPerformanceOverlayGeometry()
 
     local previousAlpha = FrameAlpha
-    FrameAlpha = 1
+    FrameAlpha = PerformanceHUD.Reveal or 0
 
     Rect(x, y, w, h, rgb(13, 16, 23), 341, 9, 0.96)
     Stroke(x, y, w, h, th.Accent, 342, 9, 0.88)
@@ -6481,6 +6629,14 @@ local function EnsureGlobalSettingsTab(library)
         Default = State.NoAnim,
         Callback = function(v) State.NoAnim = v end,
     })
+    Controls.Dropdown(appearance, {
+        Title = "Toggle style",
+        Description = "Switch between sliding toggles and compact checkboxes.",
+        Options = {"Switch", "Checkbox"},
+        Default = State.Settings.ToggleStyle,
+        Callback = function(v) State.Settings.ToggleStyle = v end,
+    })
+
 
     local hud = Section.new(tab, "Interface", "Global overlays and feedback", {})
     Controls.Slider(hud, {
@@ -6517,6 +6673,109 @@ local function EnsureGlobalSettingsTab(library)
             State.Y = math.floor((vp.Y - State.H) / 2)
         end,
     })
+
+    local configs = Section.new(tab, "Configs", "Save and manage interface configurations.", {})
+
+    Controls.Label(configs, {
+        Title = "Config name",
+    })
+
+    local configNameBox = Controls.Textbox(configs, {
+        Title = "",
+        Placeholder = "default",
+        Default = State.Settings.ConfigName or "default",
+        Callback = function(v)
+            v = string.gsub(tostring(v or "default"), "[^%w_%-]", "_")
+            if v == "" then v = "default" end
+            State.Settings.ConfigName = v
+        end,
+    })
+
+    local savedConfigs = Controls.Dropdown(configs, {
+        Title = "Saved configs",
+        Options = {"None"},
+        Default = "None",
+    })
+
+    local function RefreshConfigs(selectName)
+        local names = {}
+
+        if type(listfiles) == "function" then
+            local ok, files = pcall(listfiles, ".")
+            if ok and type(files) == "table" then
+                for _, path in ipairs(files) do
+                    local file = tostring(path):gsub("\\", "/"):match("([^/]+)$") or tostring(path)
+                    local name = file:match("^DrawingUI_(.+)%.json$")
+                    if name and name ~= "" then
+                        names[#names + 1] = name
+                    end
+                end
+            end
+        end
+
+        table.sort(names, function(a, b)
+            return string.lower(a) < string.lower(b)
+        end)
+
+        if #names == 0 then names[1] = "None" end
+        savedConfigs.Options = names
+
+        local wanted = selectName
+        local found = false
+        if wanted then
+            for _, name in ipairs(names) do
+                if name == wanted then found = true break end
+            end
+        end
+
+        savedConfigs:SetValue(found and wanted or names[1], true)
+    end
+
+    Controls.Button(configs, {
+        Title = "Save config",
+        ButtonText = "Save",
+        Callback = function()
+            local name = State.Settings.ConfigName or "default"
+            if configNameBox and configNameBox.GetValue then
+                name = configNameBox:GetValue()
+            end
+            name = string.gsub(tostring(name or "default"), "[^%w_%-]", "_")
+            if name == "" then name = "default" end
+            State.Settings.ConfigName = name
+
+            if library.SaveConfig then
+                local ok = library:SaveConfig(name)
+                if ok then RefreshConfigs(name) end
+            end
+        end,
+    })
+
+    Controls.Button(configs, {
+        Title = "Load config",
+        ButtonText = "Load",
+        Callback = function()
+            local name = savedConfigs:GetValue()
+            if name and name ~= "None" and library.LoadConfig then
+                library:LoadConfig(name)
+                State.Settings.ConfigName = name
+                configNameBox:SetValue(name, true)
+            end
+        end,
+    })
+
+    Controls.Button(configs, {
+        Title = "Delete config",
+        ButtonText = "Delete",
+        Callback = function()
+            local name = savedConfigs:GetValue()
+            if name and name ~= "None" and library.DeleteConfig then
+                local ok = library:DeleteConfig(name)
+                if ok then RefreshConfigs() end
+            end
+        end,
+    })
+
+    RefreshConfigs()
 
     return tab
 end
@@ -6621,7 +6880,7 @@ function Library:CreateWindow(opts)
     end
     return self
 end
-Library.Version       = "1.1.3"
+Library.Version       = "1.2.1"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6669,6 +6928,148 @@ end
 
 function Library:SelectTab(name)
     SetActiveTabByName(name)
+end
+
+-- configs -------------------------------------------------------------------
+function Library:SaveConfig(name)
+    name = string.gsub(tostring(name or "default"), "[^%w_%-]", "_")
+    if name == "" then name = "default" end
+
+    local data = {
+        version = 1,
+        theme = State.Theme and State.Theme.Name or "Midnight",
+        background = type(State.Background) == "table" and (State.Background.Type or "none") or State.Background,
+        settings = {
+            WindowOpacity = State.Settings.WindowOpacity,
+            BackgroundEffects = State.Settings.BackgroundEffects,
+            BorderComet = State.Settings.BorderComet,
+            ToggleStyle = State.Settings.ToggleStyle,
+            RailPinned = State.RailPinned,
+            NoAnim = State.NoAnim,
+        },
+        controls = {},
+    }
+
+    local function storeControl(ctrl, path)
+        if not ctrl or not ctrl.GetValue then return end
+        if ctrl.Kind ~= "Toggle" and ctrl.Kind ~= "Slider"
+           and ctrl.Kind ~= "RangeSlider" and ctrl.Kind ~= "Dropdown"
+           and ctrl.Kind ~= "Radio" then return end
+        local key = ctrl.ConfigKey or path
+        local ok, a, b = pcall(function() return ctrl:GetValue() end)
+        if ok then
+            if ctrl.Kind == "RangeSlider" then
+                data.controls[key] = {a, b}
+            else
+                data.controls[key] = a
+            end
+        end
+    end
+
+    for ti, tab in ipairs(State.Tabs) do
+        for ri, row in ipairs(tab.Rows or {}) do
+            if IsSection(row) then
+                for ci, child in ipairs(row.Rows or {}) do
+                    if getmetatable(child) == InlineRow then
+                        for ii, ctrl in ipairs(child.Cells or {}) do
+                            storeControl(ctrl, tostring(tab.Name).."/"..tostring(row.Title).."/"..tostring(ctrl.Title).."/"..ii)
+                        end
+                    else
+                        storeControl(child, tostring(tab.Name).."/"..tostring(row.Title).."/"..tostring(child.Title).."/"..ci)
+                    end
+                end
+            else
+                storeControl(row, tostring(tab.Name).."/"..tostring(row.Title).."/"..ri)
+            end
+        end
+    end
+
+    if not writefile then return false, "writefile unavailable" end
+    local ok, encoded = pcall(function()
+        return game:GetService("HttpService"):JSONEncode(data)
+    end)
+    if not ok then return false, encoded end
+    local path = "DrawingUI_" .. name .. ".json"
+    local wrote, err = pcall(function() writefile(path, encoded) end)
+    return wrote, wrote and path or err
+end
+
+function Library:LoadConfig(name)
+    name = string.gsub(tostring(name or "default"), "[^%w_%-]", "_")
+    if name == "" then name = "default" end
+    local path = "DrawingUI_" .. name .. ".json"
+    if not readfile then return false, "readfile unavailable" end
+    if isfile then
+        local okExists, exists = pcall(function() return isfile(path) end)
+        if okExists and not exists then return false, "config not found" end
+    end
+    local okRead, raw = pcall(function() return readfile(path) end)
+    if not okRead then return false, raw end
+    local okDecode, data = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(raw)
+    end)
+    if not okDecode or type(data) ~= "table" then return false, data end
+
+    if data.theme then SetThemeByName(data.theme) end
+    if data.background then State.Background = NormalizeBackground(data.background) end
+    local st = data.settings or {}
+    if st.WindowOpacity ~= nil then
+        State.Settings.WindowOpacity = st.WindowOpacity
+        GlassSurfaceAlpha = math.max(0.20, math.min(1, st.WindowOpacity / 100))
+    end
+    if st.BackgroundEffects ~= nil then State.Settings.BackgroundEffects = st.BackgroundEffects end
+    if st.BorderComet ~= nil then State.Settings.BorderComet = st.BorderComet end
+    if st.ToggleStyle ~= nil then State.Settings.ToggleStyle = st.ToggleStyle end
+    if st.RailPinned ~= nil then State.RailPinned = st.RailPinned end
+    if st.NoAnim ~= nil then State.NoAnim = st.NoAnim end
+
+    local values = data.controls or {}
+    local function loadControl(ctrl, pathKey)
+        if not ctrl or not ctrl.SetValue then return end
+        local key = ctrl.ConfigKey or pathKey
+        local value = values[key]
+        if value == nil then return end
+        if ctrl.Kind == "RangeSlider" and type(value) == "table" then
+            ctrl:SetValue(value[1], value[2])
+        else
+            ctrl:SetValue(value)
+        end
+    end
+
+    for _, tab in ipairs(State.Tabs) do
+        for ri, row in ipairs(tab.Rows or {}) do
+            if IsSection(row) then
+                for ci, child in ipairs(row.Rows or {}) do
+                    if getmetatable(child) == InlineRow then
+                        for ii, ctrl in ipairs(child.Cells or {}) do
+                            loadControl(ctrl, tostring(tab.Name).."/"..tostring(row.Title).."/"..tostring(ctrl.Title).."/"..ii)
+                        end
+                    else
+                        loadControl(child, tostring(tab.Name).."/"..tostring(row.Title).."/"..tostring(child.Title).."/"..ci)
+                    end
+                end
+            else
+                loadControl(row, tostring(tab.Name).."/"..tostring(row.Title).."/"..ri)
+            end
+        end
+    end
+    return true, path
+end
+
+function Library:DeleteConfig(name)
+    name = string.gsub(tostring(name or ""), "[^%w_%-]", "_")
+    if name == "" then return false, "invalid config name" end
+
+    local path = "DrawingUI_" .. name .. ".json"
+    if type(delfile) ~= "function" then return false, "delfile unavailable" end
+
+    if type(isfile) == "function" then
+        local okExists, exists = pcall(isfile, path)
+        if okExists and not exists then return false, "config not found" end
+    end
+
+    local ok, err = pcall(delfile, path)
+    return ok, ok and path or err
 end
 
 -- notifications -------------------------------------------------------------
@@ -6774,7 +7175,7 @@ end
 -- lifecycle ----------------------------------------------------------------
 function Library:Toggle()   ToggleUI() end
 function Library:Show()     State.Open = true end
-function Library:Hide()     State.Open = false end
+function Library:Hide()     State.Open = false; ClearFocus() end
 function Library:StartStartup(opts) StartStartup(opts) end
 
 function Library:IsAlive() return State.Alive end
@@ -6815,6 +7216,7 @@ do
         AttachControl(parentType, "AddDivider",     "Divider")
         AttachControl(parentType, "AddButton",      "Button")
         AttachControl(parentType, "AddToggle",      "Toggle")
+        AttachControl(parentType, "AddRadio",       "Radio")
         AttachControl(parentType, "AddSlider",      "Slider")
         AttachControl(parentType, "AddRangeSlider", "RangeSlider")
         AttachControl(parentType, "AddDropdown",    "Dropdown")
@@ -6844,7 +7246,7 @@ do
     end
 
     for _, ctrlName in ipairs({
-        "Label", "Divider", "Toggle", "Slider", "RangeSlider",
+        "Label", "Divider", "Toggle", "Radio", "Slider", "RangeSlider",
         "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
     }) do
         AttachControl(InlineRow, "Add" .. ctrlName, ctrlName)
@@ -6852,7 +7254,7 @@ do
 
     -- [FIX] allow chaining control creation: `row:AddToggle({}):AddToggle({})`
     for _, ctrlName in ipairs({
-        "Label", "Divider", "Toggle", "Slider", "RangeSlider",
+        "Label", "Divider", "Toggle", "Radio", "Slider", "RangeSlider",
         "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
     }) do
         local ctor = Controls[ctrlName]
@@ -6910,7 +7312,7 @@ end)
 
 
 
-Library.Version = "1.0.0"
+Library.Version = "1.2.0"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
