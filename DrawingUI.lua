@@ -1484,6 +1484,16 @@ local State = {
     NotificationPosition = "top_left",
 }
 
+function State.SyncGameInput(force)
+    if type(setrobloxinput) ~= "function" then return end
+
+    local toGame = Focus.Field == nil
+    if not force and State.InputSent == toGame then return end
+
+    State.InputSent = toGame
+    pcall(setrobloxinput, toGame)
+end
+
 
 local function ApplyThemeOptions(themeOption)
     if type(themeOption) == "string" then
@@ -4624,7 +4634,10 @@ Register("ConfigTextbox", function(parent, opts)
     self._focus = { Value = self.Value, Caret = #self.Value, Anchor = nil }
     self._caretAnim = 1
 
-    function self:GetValue() return self.Value end
+    function self:GetValue()
+        if Focus.Field == self._focus then return self._focus.Value end
+        return self.Value
+    end
 
     function self:SetValue(v, silent)
         v = tostring(v or "")
@@ -4642,9 +4655,10 @@ Register("ConfigTextbox", function(parent, opts)
         local th = State.Theme
         local h = Layout.FieldH + 2
         local fieldY = y + 2
-        local labelW = self.Title ~= "" and TextWidth(self.Title, Layout.TextSize, Fonts.System) or 0
-        local fieldX = x + math.min(w * 0.48, labelW + 18)
-        local fieldW = math.max(70, w - (fieldX - x))
+        -- Config name has its own label row, so the editor itself uses the
+        -- section width instead of reserving the old inline-label column.
+        local fieldX = x
+        local fieldW = math.max(70, w)
 
         local hover = MouseIn(fieldX, fieldY, fieldW, h) and self.Enabled
         local focused = (Focus.Field == self._focus)
@@ -4657,15 +4671,7 @@ Register("ConfigTextbox", function(parent, opts)
         local strokeA = focused and 0.85 or (0.5 + 0.3 * self._hover)
         Stroke(fieldX, fieldY, fieldW, h, strokeColor, 53, 6, strokeA)
 
-        -- title
         local textX = fieldX + 10
-        if self.Title ~= "" then
-            Text(self.Title, textX, fieldY + (h - Layout.TextSize) / 2,
-                 th.Text, Layout.TextSize, Fonts.System,
-                 54, self.Enabled and 0.92 or 0.4,
-                 100)
-            textX = textX + TextWidth(self.Title, Layout.TextSize, Fonts.System) + 12
-        end
 
         -- value / placeholder
         local val = self._focus.Value
@@ -4674,11 +4680,13 @@ Register("ConfigTextbox", function(parent, opts)
 
         local availW = fieldW - (textX - fieldX) - 12
         local visible = display
+        local visibleStart = 1
         if TextWidth(visible, Layout.TextSize, Fonts.Monospace) > availW then
             -- trim from left to show end of value
             local excess = TextWidth(visible, Layout.TextSize, Fonts.Monospace) - availW
             local cut = math.ceil(excess / (Layout.TextSize * (FontMetrics[Fonts.Monospace] or 0.6)))
-            visible = string.sub(visible, cut + 1)
+            visibleStart = cut + 1
+            visible = string.sub(visible, visibleStart)
         end
 
         Text(visible, textX, fieldY + (h - Layout.TextSize) / 2,
@@ -4690,8 +4698,13 @@ Register("ConfigTextbox", function(parent, opts)
             if self._caretAnim < 0 then self._caretAnim = 1 end
             local caretAlpha = (self._caretAnim > 0.5) and 1 or 0.2
 
-            -- position caret within visible range
-            local caretX = textX + TextWidth(string.sub(val, 1, self._focus.Caret), Layout.TextSize, Fonts.Monospace)
+            -- Measure only the characters that are actually visible before the
+            -- caret. Using the same rendered substring keeps the indicator
+            -- immediately beside the typed text instead of drifting right.
+            local caret = math.max(0, math.min(self._focus.Caret or #val, #val))
+            local beforeCaret = string.sub(val, visibleStart, caret)
+            local caretX = textX + TextWidth(beforeCaret, Layout.TextSize, Fonts.Monospace) + 1
+            if caret < visibleStart then caretX = textX end
             if caretX < fieldX + 6 then caretX = fieldX + 6 end
             if caretX > fieldX + fieldW - 6 then caretX = fieldX + fieldW - 6 end
 
@@ -4702,21 +4715,30 @@ Register("ConfigTextbox", function(parent, opts)
     function self:Input(x, y, w)
         if not self.Enabled then return end
         local h = Layout.FieldH + 2
+        local fieldX = x
         local fieldY = y + 2
+        local fieldW = math.max(70, w)
 
-        if MouseIn(x, fieldY, w, h) and Input.Click then
-            Input.Click = false
-            SetFocus(self._focus)
+        if MouseIn(fieldX, fieldY, fieldW, h) and Input.Click then
+            -- Install the commit handler before focus so this very click leaves
+            -- the editor completely ready for the next keyboard frame.
+            self._focus.Value = self.Value
+            self._focus.Caret = #self._focus.Value
+            self._focus.Anchor = nil
             self._focus.OnCommit = function(v)
                 self:SetValue(v)
             end
+            SetFocus(self._focus)
+            State.SyncGameInput(true)
+            Input.Click = false
+            return
         end
 
-        -- click outside = unfocus
+        -- click outside = commit the current edit, then unfocus
         if Input.Click and Focus.Field == self._focus then
-            if not MouseIn(x, fieldY, w, h) then
-                ClearFocus()
-            end
+            self:SetValue(self._focus.Value)
+            ClearFocus()
+            State.SyncGameInput(true)
         end
     end
 
@@ -6100,7 +6122,7 @@ local function Render()
 
     -- Matcha input routing is stateful; enforce the desired state every render
     -- while an internal text editor owns keyboard focus.
-    Library:_SyncGameInput(false)
+    State.SyncGameInput(false)
 
     -- hotkey toggle
     local key = string.lower(State.MenuKey)
@@ -6693,15 +6715,27 @@ local function EnsureGlobalSettingsTab(library)
 
     local function RefreshConfigs(selectName)
         local names = {}
+        local seen = {}
+
+        local function AddName(name)
+            name = tostring(name or "")
+            if name == "" or name == "None" or seen[name] then return end
+            seen[name] = true
+            names[#names + 1] = name
+        end
+
+        -- A successful save is authoritative. Add it immediately so the UI
+        -- updates even on executors whose listfiles root differs from writefile.
+        AddName(selectName)
 
         if type(listfiles) == "function" then
-            local ok, files = pcall(listfiles, ".")
-            if ok and type(files) == "table" then
-                for _, path in ipairs(files) do
-                    local file = tostring(path):gsub("\\", "/"):match("([^/]+)$") or tostring(path)
-                    local name = file:match("^DrawingUI_(.+)%.json$")
-                    if name and name ~= "" then
-                        names[#names + 1] = name
+            for _, root in ipairs({".", ""}) do
+                local ok, files = pcall(listfiles, root)
+                if ok and type(files) == "table" then
+                    for _, path in ipairs(files) do
+                        local file = tostring(path):gsub("\\", "/"):match("([^/]+)$") or tostring(path)
+                        local name = file:match("^DrawingUI_(.+)%.json$")
+                        AddName(name)
                     end
                 end
             end
@@ -6712,7 +6746,10 @@ local function EnsureGlobalSettingsTab(library)
         end)
 
         if #names == 0 then names[1] = "None" end
+
         savedConfigs.Options = names
+        savedConfigs._listScroll = 0
+        savedConfigs._listScrollTo = 0
 
         local wanted = selectName
         local found = false
@@ -6729,17 +6766,19 @@ local function EnsureGlobalSettingsTab(library)
         Title = "Save config",
         ButtonText = "Save",
         Callback = function()
-            local name = State.Settings.ConfigName or "default"
-            if configNameBox and configNameBox.GetValue then
-                name = configNameBox:GetValue()
-            end
+            local name = configNameBox:GetValue()
             name = string.gsub(tostring(name or "default"), "[^%w_%-]", "_")
             if name == "" then name = "default" end
+
+            -- Commit the live edit before serialising the config.
+            configNameBox:SetValue(name, true)
             State.Settings.ConfigName = name
 
             if library.SaveConfig then
                 local ok = library:SaveConfig(name)
-                if ok then RefreshConfigs(name) end
+                if ok then
+                    RefreshConfigs(name)
+                end
             end
         end,
     })
@@ -6779,16 +6818,6 @@ end
 -- ============================================================================
 
 local Library = {}
-
-function Library:_SyncGameInput(force)
-    if type(setrobloxinput) ~= "function" then return end
-
-    local toGame = Focus.Field == nil
-    if not force and State.InputSent == toGame then return end
-
-    State.InputSent = toGame
-    pcall(setrobloxinput, toGame)
-end
 
 -- CreateWindow is the public constructor used by consumer scripts.
 -- The startup animation is part of the same window.
@@ -6884,7 +6913,7 @@ function Library:CreateWindow(opts)
     end
     return self
 end
-Library.Version       = "1.2.3"
+Library.Version       = "1.2.6"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -7179,7 +7208,7 @@ end
 -- lifecycle ----------------------------------------------------------------
 function Library:Toggle()   ToggleUI() end
 function Library:Show()     State.Open = true end
-function Library:Hide()     State.Open = false; ClearFocus(); self:_SyncGameInput(true) end
+function Library:Hide()     State.Open = false; ClearFocus(); State.SyncGameInput(true) end
 function Library:StartStartup(opts) StartStartup(opts) end
 
 function Library:IsAlive() return State.Alive end
@@ -7317,7 +7346,7 @@ end)
 
 
 
-Library.Version = "1.2.3"
+Library.Version = "1.2.6"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
