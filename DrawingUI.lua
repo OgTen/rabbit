@@ -1355,23 +1355,12 @@ local function SetFocus(field)
     if field then
         field.Caret  = field.Caret or #(field.Value or "")
         field.Anchor = nil
-
-        -- Matcha/INSui-compatible input capture: while DrawingUI owns a text
-        -- field, Roblox must not receive those same keyboard presses.
-        if type(setrobloxinput) == "function" then
-            pcall(setrobloxinput, false)
-        end
     end
 end
 
 local function ClearFocus()
     if Focus.Field and Focus.Field.OnBlur then Focus.Field.OnBlur() end
     Focus.Field = nil
-
-    -- Always restore game input when text editing ends.
-    if type(setrobloxinput) == "function" then
-        pcall(setrobloxinput, true)
-    end
 end
 
 local function TickFocus()
@@ -1421,6 +1410,7 @@ local State = {
     -- lifecycle
     Alive       = true,
     Frame       = 0,
+    InputSent   = true,
     Delta       = 1 / 60,
     LastTick    = os.clock(),
 
@@ -1494,6 +1484,16 @@ local State = {
     NotificationPosition = "top_left",
 }
 
+
+function Library:_SyncGameInput(force)
+    if type(setrobloxinput) ~= "function" then return end
+
+    local toGame = Focus.Field == nil
+    if not force and State.InputSent == toGame then return end
+
+    State.InputSent = toGame
+    pcall(setrobloxinput, toGame)
+end
 
 local function ApplyThemeOptions(themeOption)
     if type(themeOption) == "string" then
@@ -4009,7 +4009,7 @@ end
 
 -- ============================================================================
 --  PART 4 COMPLETE
---  Next: PART 5 -- control batch B: Range, Dropdown, Keybind, Textbox
+--  Next: PART 5 -- control batch B: Range, Dropdown, Keybind
 -- ============================================================================
 
 -- ============================================================================
@@ -4619,12 +4619,12 @@ Register("Keybind", function(parent, opts)
 end)
 
 -- ============================================================================
---  TEXTBOX  --  editable text field, focus to type, enter commits
+--  INTERNAL CONFIG TEXTBOX  --  Settings-only editor, not public API
 -- ============================================================================
 
-Register("Textbox", function(parent, opts)
+Register("ConfigTextbox", function(parent, opts)
     opts = opts or {}
-    local self = Base.New("Textbox", parent, opts)
+    local self = Base.New("ConfigTextbox", parent, opts)
     self.Value       = opts.Default or ""
     self.Placeholder = opts.Placeholder or "Enter..."
     self.Callback    = opts.Callback
@@ -6108,6 +6108,10 @@ local function Render()
     -- text focus
     TickFocus()
 
+    -- Matcha input routing is stateful; enforce the desired state every render
+    -- while an internal text editor owns keyboard focus.
+    Library:_SyncGameInput(false)
+
     -- hotkey toggle
     local key = string.lower(State.MenuKey)
     local hk = Keys[string.upper(key)]
@@ -6222,16 +6226,21 @@ local function Render()
     ResetPool()
     Tooltip.Hovered = false
 
+    -- Persistent overlays must consume the same pool slots before any
+    -- tab/control-dependent rendering. This prevents navigation/clicks from
+    -- remapping their Drawing objects for a frame and causing flicker.
+    UpdateKeybindOverlayInput()
+    UpdatePerformanceOverlayInput()
+    DrawKeybindOverlay()
+    DrawPerformanceOverlay()
+    DrawHUDBoxes()
+
     -- render back-to-front
     DrawFrame()
     DrawTitleBar(State.WindowTitle, State.WindowSubtitle)
     DrawTabRail()
     DrawContent()
     TickTooltip(State.Delta)
-
-    -- The keybind HUD is its own persistent input surface.
-    UpdateKeybindOverlayInput()
-    UpdatePerformanceOverlayInput()
 
     -- Do not interact with partially revealed controls. They become live once
     -- the reveal reaches the final frame.
@@ -6245,11 +6254,6 @@ local function Render()
     TickNotifications(State.Delta)
     DrawNotifications()
     DrawTooltip()
-    DrawKeybindOverlay()
-    DrawPerformanceOverlay()
-
-    -- HUD boxes
-    DrawHUDBoxes()
 
     -- resize handle is topmost interactive
     DrawResizeHandle()
@@ -6680,7 +6684,7 @@ local function EnsureGlobalSettingsTab(library)
         Title = "Config name",
     })
 
-    local configNameBox = Controls.Textbox(configs, {
+    local configNameBox = Controls.ConfigTextbox(configs, {
         Title = "",
         Placeholder = "default",
         Default = State.Settings.ConfigName or "default",
@@ -6880,7 +6884,7 @@ function Library:CreateWindow(opts)
     end
     return self
 end
-Library.Version       = "1.2.1"
+Library.Version       = "1.2.2"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -7175,15 +7179,17 @@ end
 -- lifecycle ----------------------------------------------------------------
 function Library:Toggle()   ToggleUI() end
 function Library:Show()     State.Open = true end
-function Library:Hide()     State.Open = false; ClearFocus() end
+function Library:Hide()     State.Open = false; ClearFocus(); self:_SyncGameInput(true) end
 function Library:StartStartup(opts) StartStartup(opts) end
 
 function Library:IsAlive() return State.Alive end
 
 function Library:Destroy()
     State.Alive = false
-    ClearPool()
     ClearFocus()
+    State.InputSent = true
+    if type(setrobloxinput) == "function" then pcall(setrobloxinput, true) end
+    ClearPool()
     CancelCapture()
 end
 
@@ -7221,7 +7227,6 @@ do
         AttachControl(parentType, "AddRangeSlider", "RangeSlider")
         AttachControl(parentType, "AddDropdown",    "Dropdown")
         AttachControl(parentType, "AddKeybind",     "Keybind")
-        AttachControl(parentType, "AddTextbox",     "Textbox")
         AttachControl(parentType, "AddColorPicker", "ColorPicker")
     end
 
@@ -7312,7 +7317,7 @@ end)
 
 
 
-Library.Version = "1.2.0"
+Library.Version = "1.2.2"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
