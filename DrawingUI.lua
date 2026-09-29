@@ -694,6 +694,7 @@ local function Text(text, x, y, color, size, font, z, alpha, room, center)
 
     local a = (alpha or 1) * FrameAlpha
     if l.Alpha ~= a then l.Alpha = a; o.Transparency = a end
+    return o
 end
 
 local function TextCenter(text, cx, y, color, size, font, z, alpha, room)
@@ -4689,21 +4690,39 @@ Register("ConfigTextbox", function(parent, opts)
             visible = string.sub(visible, visibleStart)
         end
 
-        Text(visible, textX, fieldY + (h - Layout.TextSize) / 2,
-             color, Layout.TextSize, Fonts.Monospace, 54, 1, availW)
+        -- This field has already performed its own clipping above, so do not
+        -- ask Text() to trim it a second time. Keep the returned Drawing.Text
+        -- object so the caret can use Matcha's real rendered TextBounds.
+        local textObject = Text(visible, textX, fieldY + (h - Layout.TextSize) / 2,
+                                color, Layout.TextSize, Fonts.Monospace, 54, 1)
 
         -- caret (blinking when focused)
         if focused then
             self._caretAnim = self._caretAnim - State.Delta * 1.6
             if self._caretAnim < 0 then self._caretAnim = 1 end
             local caretAlpha = (self._caretAnim > 0.5) and 1 or 0.2
-
-            -- Measure only the characters that are actually visible before the
-            -- caret. Using the same rendered substring keeps the indicator
-            -- immediately beside the typed text instead of drifting right.
             local caret = math.max(0, math.min(self._focus.Caret or #val, #val))
-            local beforeCaret = string.sub(val, visibleStart, caret)
-            local caretX = textX + TextWidth(beforeCaret, Layout.TextSize, Fonts.Monospace) + 1
+
+            local renderedWidth = 0
+            if textObject then
+                pcall(function()
+                    local bounds = textObject.TextBounds
+                    if bounds then renderedWidth = tonumber(bounds.X) or 0 end
+                end)
+            end
+
+            local caretX
+            if caret >= #val then
+                -- Normal typing path: use the executor's exact rendered width.
+                caretX = textX + renderedWidth + 1
+            else
+                -- Navigation inside the value: scale within the exact rendered
+                -- width instead of using the inaccurate fallback TextWidth.
+                local visibleCount = math.max(1, #visible)
+                local charsBefore = math.max(0, caret - visibleStart + 1)
+                caretX = textX + renderedWidth * (charsBefore / visibleCount)
+            end
+
             if caret < visibleStart then caretX = textX end
             if caretX < fieldX + 6 then caretX = fieldX + 6 end
             if caretX > fieldX + fieldW - 6 then caretX = fieldX + fieldW - 6 end
@@ -4729,7 +4748,6 @@ Register("ConfigTextbox", function(parent, opts)
                 self:SetValue(v)
             end
             SetFocus(self._focus)
-            State.SyncGameInput(true)
             Input.Click = false
             return
         end
@@ -4738,7 +4756,6 @@ Register("ConfigTextbox", function(parent, opts)
         if Input.Click and Focus.Field == self._focus then
             self:SetValue(self._focus.Value)
             ClearFocus()
-            State.SyncGameInput(true)
         end
     end
 
@@ -6103,8 +6120,10 @@ local function Render()
         return
     end
 
-    -- read inputs
+    -- read mouse first. If the config editor was focused on the previous
+    -- frame, block Roblox before polling/processing this frame's keyboard.
     ReadInput()
+    State.SyncGameInput(false)
     ReadKeys()
 
     -- measure dt
@@ -6120,8 +6139,7 @@ local function Render()
     -- text focus
     TickFocus()
 
-    -- Matcha input routing is stateful; enforce the desired state every render
-    -- while an internal text editor owns keyboard focus.
+    -- Enter/Escape may have ended editing above; reflect that immediately.
     State.SyncGameInput(false)
 
     -- hotkey toggle
@@ -6913,7 +6931,7 @@ function Library:CreateWindow(opts)
     end
     return self
 end
-Library.Version       = "1.2.6"
+Library.Version       = "1.2.7"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -7346,7 +7364,7 @@ end)
 
 
 
-Library.Version = "1.2.6"
+Library.Version = "1.2.7"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
