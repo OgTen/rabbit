@@ -2565,6 +2565,11 @@ local function StartStartup(opts)
         State.Visible = 1
         State.Open = true
         State.RailOpen = 1
+        -- Render() intentionally suppresses frame zero until CreateWindow has
+        -- chosen a startup path. A disabled splash must mark initialization as
+        -- complete or that guard would silently return forever.
+        State.Frame = math.max(1, State.Frame or 0)
+        State.LastTick = os.clock()
         return
     end
 
@@ -2700,11 +2705,15 @@ local function DrawTitleBar(title, subtitle)
         end
     end
 
-    local islandW = collapsedW + (expandedW - collapsedW) * island.Expand
+    -- Snap the island itself to an even pixel width around the exact window
+    -- centre. This keeps the visible left/right padding identical instead of
+    -- allowing half-pixel rounding to make one side look wider.
+    local islandW = math.floor(collapsedW + (expandedW - collapsedW) * island.Expand + 0.5)
+    if islandW % 2 ~= 0 then islandW = islandW + 1 end
     local islandH = 32
-    local islandCX = State.X + State.W * 0.5
+    local islandCX = math.floor(State.X + State.W * 0.5 + 0.5)
     local islandX = islandCX - islandW * 0.5
-    local islandY = State.Y + (Layout.TopbarH - islandH) * 0.5
+    local islandY = math.floor(State.Y + (Layout.TopbarH - islandH) * 0.5 + 0.5)
 
     -- Current Roblox experience name on the far-left of the header. Keep this
     -- deliberately quieter than the centred island title and truncate it before
@@ -3293,11 +3302,17 @@ Register("Button", function(parent, opts)
         Rect(btnX, btnY, btnW, h, bg, 52, 6, bgA)
         Stroke(btnX, btnY, btnW, h, accent, 53, 6, 0.35 + 0.45 * glow)
 
-        local label = self.ButtonText
+        -- Constrain the visible label to the actual button interior. The button
+        -- itself deliberately stays compact; long action names are ellipsized
+        -- instead of being centred at full width and leaking outside the border.
+        local labelRoom = math.max(8, btnW - 14)
+        local label = TrimText(tostring(self.ButtonText), labelRoom,
+                               Layout.TextSize, Fonts.SystemBold)
         local lw = TextWidth(label, Layout.TextSize, Fonts.SystemBold)
         local lc = mix(th.Text, accent, glow * 0.7)
         Text(label, btnX + (btnW - lw) / 2, TextMidY(btnY, h, Layout.TextSize),
-             lc, Layout.TextSize, Fonts.SystemBold, 54, self.Enabled and 1 or 0.5)
+             lc, Layout.TextSize, Fonts.SystemBold, 54,
+             self.Enabled and 1 or 0.5, labelRoom, false)
 
         -- title on the left
         if self.Title ~= "" then
@@ -7226,7 +7241,7 @@ function Library:CreateWindow(opts)
     State.ApplyInputState(true)
     return self
 end
-Library.Version       = "1.4.1"
+Library.Version       = "1.4.2"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -7709,7 +7724,7 @@ end)
 
 
 
-Library.Version = "1.4.1"
+Library.Version = "1.4.2"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
