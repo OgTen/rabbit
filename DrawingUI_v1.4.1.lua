@@ -1430,6 +1430,12 @@ local State = {
         ImageSource = nil,
         Title = nil,
         LogoSize = 50,
+        ShowLogo = true,
+        ShowGameName = true,
+        Border = true,
+        AccentBar = true,
+        FooterAccent = true,
+        CornerRadius = 14,
         BackgroundImage = nil,
         BackgroundImageSource = nil,
         BackgroundOpacity = 0.22,
@@ -1451,20 +1457,18 @@ local State = {
         CompactOverlay = false,
         ToggleStyle = "Switch",
         ConfigName = "default",
-        AntiAFK = false,
-        AntiAFKInterval = 300,
     },
 
     -- overlay reveal sequencing
     OverlayRevealTime = 0,
     OverlayNextRevealAt = 1.0,
-    AntiAFKLast = 0,
 
     -- window identity / appearance
     WindowTitle    = "Window",
     WindowSubtitle = "",
     GameName       = "",
     ShowGameName   = true,
+    ShowLogo       = true,
     Logo           = nil,
     LogoSource     = nil,
     LogoSize       = 30,
@@ -2346,97 +2350,104 @@ local function DrawStartupFrame()
     local intro = Smooth(p / 0.18)
     local logoReveal = Smooth((p - 0.07) / 0.20)
     local titleReveal = Smooth((p - 0.18) / 0.20)
-    local detailReveal = Smooth((p - 0.30) / 0.18)
-    local settle = Smooth((p - 0.42) / 0.30)
+    local detailReveal = Smooth((p - 0.28) / 0.18)
+    local settle = Smooth((p - 0.40) / 0.28)
+    local corner = math.max(6, math.min(24, tonumber(st.CornerRadius) or 14))
 
-    -- A completely different splash silhouette: tall, compact identity panel
-    -- with layered depth rather than the old horizontal logo/typewriter card.
-    GlassSurface(x, y, w, h, rgb(11, 13, 20), 10, 18)
+    -- Cleaner single-surface splash. The old inset/shadow box has been removed;
+    -- the theme-coloured border is now the primary frame treatment.
+    GlassSurface(x, y, w, h, rgb(11, 13, 20), 10, corner)
 
     if st.BackgroundImage and st.BackgroundOpacity > 0 then
         DrawPicture(st.BackgroundImage, x, y, w, h, Layer(11),
-                    math.max(0, math.min(1, st.BackgroundOpacity)), 18)
-        Rect(x, y, w, h, rgb(7, 9, 14), 12, 18, 0.48)
+                    math.max(0, math.min(1, st.BackgroundOpacity)), corner)
+        Rect(x, y, w, h, rgb(7, 9, 14), 12, corner, 0.48)
     else
         HidePicture(st.BackgroundImage)
     end
 
-    -- Soft inset panel gives the splash depth without looking like a dashboard.
-    local inset = 8
-    Rect(x + inset, y + inset, w - inset * 2, h - inset * 2,
-         rgb(17, 19, 28), 18, 14, 0.40 * intro)
-    Stroke(x, y, w, h, th.Stroke, 20, 18, 0.48 * intro)
-    Stroke(x + 1, y + 1, w - 2, h - 2, th.Accent,
-           21, 17, 0.10 * intro)
+    if st.Border ~= false then
+        Stroke(x, y, w, h, th.Accent, 20, corner, 0.58 * intro)
+        Stroke(x + 1, y + 1, w - 2, h - 2, th.Stroke,
+               21, math.max(5, corner - 1), 0.34 * intro)
+    end
 
-    -- Thin premium accent rail across the upper edge. It grows outward from
-    -- the centre instead of using a loading/progress metaphor.
-    local railW = math.max(1, (w - 54) * intro)
-    GradientRect(x + (w - railW) / 2, y + 14,
-                 railW, 2, th.AccentA, th.AccentB, 25, 0.78 * intro, 18)
+    -- Keep the v1.4 top accent rail and its centre-out fade/reveal.
+    if st.AccentBar ~= false then
+        local railW = math.max(1, (w - 48) * intro)
+        GradientRect(x + (w - railW) / 2, y + 13,
+                     railW, 2, th.AccentA, th.AccentB,
+                     25, 0.88 * intro, 18)
+    end
 
-    local logoSize = math.max(48, math.min(82, tonumber(st.LogoSize) or 66))
+    local hasLogo = st.ShowLogo ~= false and st.Image ~= nil
+    local logoSize = math.max(36, math.min(76, tonumber(st.LogoSize) or 56))
     local logoCX = x + w * 0.5
-    local logoTargetY = y + 36
-    local logoLift = (1 - logoReveal) * 12
+    local logoTargetY = y + 29
+    local logoLift = (1 - logoReveal) * 10
     local logoX = logoCX - logoSize / 2
     local logoY = logoTargetY + logoLift
 
-    -- Layered halo + floating logo. Circles are deliberately subtle so this
-    -- reads as depth/light rather than a neon/cyber effect.
-    Circle(logoCX, logoY + logoSize / 2, logoSize * 0.78,
-           th.Accent, 22, true, 1, 42, 0.035 * logoReveal)
-    Circle(logoCX, logoY + logoSize / 2, logoSize * 0.62,
-           th.AccentB, 23, true, 1, 42, 0.055 * logoReveal)
-    Rect(logoX - 5, logoY - 5, logoSize + 10, logoSize + 10,
-         rgb(20, 22, 31), 27, 16, 0.92 * logoReveal)
-    Stroke(logoX - 5, logoY - 5, logoSize + 10, logoSize + 10,
-           th.Stroke, 28, 16, 0.64 * logoReveal)
-    Stroke(logoX - 3, logoY - 3, logoSize + 6, logoSize + 6,
-           th.Accent, 29, 14, 0.18 * logoReveal)
-
-    local logoReady = DrawPicture(st.Image or State.Logo, logoX, logoY,
-                                  logoSize, logoSize, Layer(32), logoReveal, 12)
-    if not logoReady then
-        local markW = logoSize * 0.44
-        GradientRect(logoCX - markW / 2, logoY + logoSize / 2 - 1,
-                     markW, 2, th.AccentA, th.AccentB, 31,
-                     0.70 * logoReveal, 10)
+    -- No halo/circle/backing box. When a real logo exists it gets only a
+    -- compact border that follows the active theme.
+    if hasLogo then
+        Stroke(logoX - 4, logoY - 4, logoSize + 8, logoSize + 8,
+               th.Accent, 28, 12, 0.72 * logoReveal)
+        DrawPicture(st.Image, logoX, logoY,
+                    logoSize, logoSize, Layer(32), logoReveal, 9)
+    else
+        HidePicture(st.Image)
     end
 
     local title = string.upper(tostring(st.Title or State.WindowTitle or "DRAWING UI"))
-    local titleSize = 18
+    local titleSize = 17
     local titleW = TextWidth(title, titleSize, Fonts.SystemBold)
-    local titleY = y + 36 + logoSize + 27 + (1 - titleReveal) * 7
+
+    -- If no logo is configured, reclaim its vertical space instead of leaving
+    -- an empty logo slot.
+    local titleBaseY
+    if hasLogo then
+        titleBaseY = y + 29 + logoSize + 21
+    else
+        titleBaseY = y + 47
+    end
+    local titleY = titleBaseY + (1 - titleReveal) * 6
+
     Text(title, x + (w - titleW) / 2, titleY,
          th.Text, titleSize, Fonts.SystemBold, 35,
-         0.98 * titleReveal, math.max(40, w - 36), false)
+         0.98 * titleReveal, math.max(40, w - 34), false)
 
-    -- Small context line uses the detected game name when available. It is
-    -- intentionally secondary and is not a status/loading message.
-    local context = tostring(State.GameName or "")
-    if context == "" then context = "DRAWING INTERFACE" end
-    context = string.upper(context)
-    local contextSize = 10
-    local contextMaxW = math.max(60, w - 56)
-    while #context > 1 and TextWidth(context, contextSize, Fonts.SystemBold) > contextMaxW do
-        context = string.sub(context, 1, #context - 1)
+    if st.ShowGameName ~= false and State.GameName and State.GameName ~= "" then
+        local context = string.upper(tostring(State.GameName))
+        local contextSize = 10
+        local contextMaxW = math.max(60, w - 52)
+
+        while #context > 1 and TextWidth(context, contextSize, Fonts.SystemBold) > contextMaxW do
+            context = string.sub(context, 1, #context - 1)
+        end
+
+        local contextW = TextWidth(context, contextSize, Fonts.SystemBold)
+        Text(context, x + (w - contextW) / 2, titleY + 25,
+             th.TextDim, contextSize, Fonts.SystemBold, 35,
+             0.72 * detailReveal, contextMaxW, false)
     end
-    local contextW = TextWidth(context, contextSize, Fonts.SystemBold)
-    Text(context, x + (w - contextW) / 2, titleY + 27,
-         th.TextDim, contextSize, Fonts.SystemBold, 35,
-         0.62 * detailReveal, contextMaxW, false)
 
-    -- Minimal ornamental footer: two short lines and a centre point. This is
-    -- visual punctuation only; no percentage/status/loading copy is introduced.
-    local footerY = y + h - 28
-    local ornament = 42 + 12 * settle
-    GradientRect(logoCX - ornament - 8, footerY, ornament, 1,
-                 th.Stroke, th.AccentA, 25, 0.28 * detailReveal, 10)
-    GradientRect(logoCX + 8, footerY, ornament, 1,
-                 th.AccentB, th.Stroke, 25, 0.28 * detailReveal, 10)
-    Circle(logoCX, footerY, 2, th.Accent, 26, true, 1, 18,
-           0.70 * detailReveal)
+    -- Brighter lower ornament. It is still decorative rather than a progress
+    -- indicator, but now has enough contrast to be an intentional visual motif.
+    if st.FooterAccent ~= false then
+        local footerY = y + h - 19
+        local ornament = 48 + 16 * settle
+        GradientRect(logoCX - ornament - 9, footerY, ornament, 2,
+                     th.AccentB, th.AccentA, 25,
+                     0.74 * detailReveal, 10)
+        GradientRect(logoCX + 9, footerY, ornament, 2,
+                     th.AccentB, th.AccentA, 25,
+                     0.74 * detailReveal, 10)
+        Circle(logoCX, footerY + 1, 3, th.Accent,
+               26, true, 1, 18, 0.96 * detailReveal)
+        Circle(logoCX, footerY + 1, 5, th.Accent,
+               25, false, 1, 18, 0.54 * detailReveal)
+    end
 end
 
 local function TickStartup(dt)
@@ -2512,7 +2523,13 @@ local function StartStartup(opts)
     st.Duration = math.max(0.5, tonumber(opts.Duration) or 5.0)
     st.TextFade = opts.TextFade ~= false
     st.Title = opts.Title ~= nil and tostring(opts.Title) or State.WindowTitle
-    st.LogoSize = math.max(48, math.min(82, tonumber(opts.LogoSize) or 66))
+    st.LogoSize = math.max(36, math.min(76, tonumber(opts.LogoSize) or 56))
+    st.ShowLogo = opts.ShowLogo ~= false
+    st.ShowGameName = opts.ShowGameName ~= false
+    st.Border = opts.Border ~= false
+    st.AccentBar = opts.AccentBar ~= false
+    st.FooterAccent = opts.FooterAccent ~= false
+    st.CornerRadius = math.max(6, math.min(24, tonumber(opts.CornerRadius) or 14))
     st.BackgroundOpacity = tonumber(opts.BackgroundOpacity) or 0.22
     if st.BackgroundOpacity > 1 then st.BackgroundOpacity = st.BackgroundOpacity / 100 end
     st.BackgroundOpacity = math.max(0, math.min(1, st.BackgroundOpacity))
@@ -2560,14 +2577,16 @@ local function StartStartup(opts)
     st.Phase = "loading"
     st.Active = true
 
-    local splashW, splashH = 300, 230
+    local splashW, splashH = 300, 196
     local size = opts.Size
     if type(size) == "userdata" or type(size) == "table" then
         splashW = tonumber(size.X or size.x or size[1]) or splashW
         splashH = tonumber(size.Y or size.y or size[2]) or splashH
     end
     splashW = math.max(260, math.min(460, splashW))
-    splashH = math.max(st.LogoSize + 140, math.min(340, splashH))
+    local minSplashH = (st.ShowLogo ~= false and st.Image ~= nil)
+        and (st.LogoSize + 112) or 138
+    splashH = math.max(minSplashH, math.min(280, splashH))
 
     st.StartW = splashW
     st.StartH = splashH
@@ -2908,29 +2927,23 @@ local function DrawTabRail()
     -- The logo remains the sidebar's visual anchor, but branding text stays
     -- in the floating island. A larger logo gives the rail identity without
     -- consuming enough vertical space to noticeably push the tab list down.
-    local brandH = 49
+    local hasBrandLogo = State.ShowLogo ~= false and State.Logo ~= nil
+    local brandH = hasBrandLogo and 49 or 6
     local brandLogoSize = 38
     local brandLogoX = sectionX + (sectionW - brandLogoSize) * 0.5
     local brandLogoY = sectionY + 6
 
-    if State.Logo then
+    if hasBrandLogo then
         DrawPicture(State.Logo, brandLogoX, brandLogoY,
                     brandLogoSize, brandLogoSize,
                     Layer(40), FrameAlpha, 8)
-    else
-        Rect(brandLogoX, brandLogoY,
-             brandLogoSize, brandLogoSize,
-             th.Accent, 40, 8, 0.10)
-        Stroke(brandLogoX, brandLogoY,
-               brandLogoSize, brandLogoSize,
-               th.Accent, 41, 8, 0.42)
-    end
 
-    -- A short divider keeps the logo visually separated from navigation while
-    -- remaining lighter than the old branding block.
-    Line(sectionX + 13, sectionY + brandH,
-         sectionX + sectionW - 13, sectionY + brandH,
-         th.Stroke, 39, 1, 0.26)
+        -- Divider only belongs to the logo treatment; with no logo configured
+        -- the navigation simply starts near the top of the sidebar.
+        Line(sectionX + 13, sectionY + brandH,
+             sectionX + sectionW - 13, sectionY + brandH,
+             th.Stroke, 39, 1, 0.26)
+    end
 
     local rowY = sectionY + brandH + 7
     local padX = 8
@@ -6338,28 +6351,6 @@ local function Render()
     State.Frame = State.Frame + 1
     TickPerformanceOverlay(State.Delta)
 
-    -- Built-in anti-AFK. Use the executor's keyboard primitives to tap Space
-    -- at the configured interval. Never inject while an internal text editor
-    -- owns focus, so config-name editing cannot receive synthetic spaces.
-    if State.Settings.AntiAFK and Focus.Field == nil then
-        local interval = math.max(10, tonumber(State.Settings.AntiAFKInterval) or 300)
-        if State.AntiAFKLast <= 0 then
-            State.AntiAFKLast = now
-        elseif now - State.AntiAFKLast >= interval then
-            State.AntiAFKLast = now
-            if type(keypress) == "function" and type(keyrelease) == "function" then
-                pcall(keypress, 0x20)
-                task.delay(0.06, function()
-                    if State.Alive and type(keyrelease) == "function" then
-                        pcall(keyrelease, 0x20)
-                    end
-                end)
-            end
-        end
-    elseif not State.Settings.AntiAFK then
-        State.AntiAFKLast = 0
-    end
-
     -- input capture dispatcher
     UpdateCapture()
 
@@ -6949,29 +6940,6 @@ local function EnsureGlobalSettingsTab(library)
         end,
     })
 
-    local antiAFK = Section.new(tab, "Anti-AFK", "Prevents idle kicks with a periodic Space key tap.", {})
-    Controls.Toggle(antiAFK, {
-        Title = "Enable anti-AFK",
-        Description = "Periodically taps Space while enabled.",
-        Default = State.Settings.AntiAFK,
-        ConfigKey = "drawingui/anti_afk/enabled",
-        Callback = function(v)
-            State.Settings.AntiAFK = v
-            State.AntiAFKLast = v and os.clock() or 0
-        end,
-    })
-    Controls.Slider(antiAFK, {
-        Title = "Space interval",
-        Description = "Seconds between automatic Space key taps.",
-        Min = 10, Max = 900, Default = State.Settings.AntiAFKInterval, Step = 10,
-        Suffix = "s",
-        ConfigKey = "drawingui/anti_afk/interval",
-        Callback = function(v)
-            State.Settings.AntiAFKInterval = v
-            State.AntiAFKLast = os.clock()
-        end,
-    })
-
     local configs = Section.new(tab, "Configs", "Save and manage interface configurations.", {})
 
     Controls.Label(configs, {
@@ -7130,6 +7098,7 @@ function Library:CreateWindow(opts)
     -- the current place. Matcha can usually access Roblox's public Games API
     -- even when MarketplaceService:GetProductInfo is unavailable.
     State.ShowGameName = (opts.ShowGameName ~= false and opts.showGameName ~= false)
+    State.ShowLogo = (opts.ShowLogo ~= false and opts.showLogo ~= false)
     local customGameName = opts.GameName or opts.gameName
     if customGameName ~= nil then
         State.GameName = tostring(customGameName)
@@ -7171,8 +7140,13 @@ function Library:CreateWindow(opts)
         State.GameName = resolvedName or ("PLACE " .. tostring(game.PlaceId))
     end
 
-    local logoSource = opts.Logo or opts.logo
-    if logoSource ~= nil and logoSource ~= State.LogoSource then
+    local logoSource = opts.Logo
+    if logoSource == nil then logoSource = opts.logo end
+    if logoSource == false or State.ShowLogo == false then
+        HidePicture(State.Logo)
+        State.Logo = nil
+        State.LogoSource = nil
+    elseif logoSource ~= nil and logoSource ~= State.LogoSource then
         HidePicture(State.Logo)
         State.LogoSource = logoSource
         State.Logo = LoadPicture(logoSource, "logo")
@@ -7237,7 +7211,13 @@ function Library:CreateWindow(opts)
             Size = splash.Size or splash.size,
             Image = splash.Image or splash.image,
             Title = splash.Title or splash.title,
-            LogoSize = splash.LogoSize or splash.logoSize or splash.ImageSize or splash.imageSize or 66,
+            LogoSize = splash.LogoSize or splash.logoSize or splash.ImageSize or splash.imageSize or 56,
+            ShowLogo = splash.ShowLogo ~= false and splash.showLogo ~= false,
+            ShowGameName = splash.ShowGameName ~= false and splash.showGameName ~= false,
+            Border = splash.Border ~= false and splash.border ~= false,
+            AccentBar = splash.AccentBar ~= false and splash.accentBar ~= false,
+            FooterAccent = splash.FooterAccent ~= false and splash.footerAccent ~= false,
+            CornerRadius = splash.CornerRadius or splash.cornerRadius or 14,
             TextFade = textFadeValue,
             BackgroundImage = splash.BackgroundImage or splash.backgroundImage,
             BackgroundOpacity = splash.BackgroundOpacity or splash.backgroundOpacity or 0.22,
@@ -7345,8 +7325,6 @@ function Library:SaveConfig(name)
             ToggleStyle = State.Settings.ToggleStyle,
             RailPinned = State.RailPinned,
             NoAnim = State.NoAnim,
-            AntiAFK = State.Settings.AntiAFK,
-            AntiAFKInterval = State.Settings.AntiAFKInterval,
         },
         controls = {},
     }
@@ -7423,13 +7401,6 @@ function Library:LoadConfig(name)
     if st.ToggleStyle ~= nil then State.Settings.ToggleStyle = st.ToggleStyle end
     if st.RailPinned ~= nil then State.RailPinned = st.RailPinned end
     if st.NoAnim ~= nil then State.NoAnim = st.NoAnim end
-    if st.AntiAFK ~= nil then
-        State.Settings.AntiAFK = st.AntiAFK and true or false
-        State.AntiAFKLast = State.Settings.AntiAFK and os.clock() or 0
-    end
-    if st.AntiAFKInterval ~= nil then
-        State.Settings.AntiAFKInterval = math.max(10, math.min(900, tonumber(st.AntiAFKInterval) or 300))
-    end
 
     local values = data.controls or {}
     local function loadControl(ctrl, pathKey)
@@ -7605,9 +7576,6 @@ function Library:Destroy()
     State.DestroyCallbacks = {}
 
     ClearFocus()
-    State.Settings.AntiAFK = false
-    State.AntiAFKLast = 0
-    if type(keyrelease) == "function" then pcall(keyrelease, 0x20) end
     State.InputSent = true
     if type(setrobloxinput) == "function" then setrobloxinput(true) end
     ClearPool()
