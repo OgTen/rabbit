@@ -2674,9 +2674,14 @@ local function DrawTitleBar(title, subtitle)
     local hasActions = (leftCount + rightCount) > 0
     local actionSlotW = 38
     local sideSlots = math.max(leftCount, rightCount)
-    local expandedW = collapsedW + sideSlots * actionSlotW * 2
-    local islandMaxW = math.max(collapsedW, State.W - 28)
-    expandedW = math.min(expandedW, islandMaxW)
+
+    -- Reserve the exact same amount of action space on both sides, regardless
+    -- of how many actions are registered on either side. Build the target from
+    -- a half-width so expansion cannot accumulate on only one edge.
+    local collapsedHalfW = collapsedW * 0.5
+    local expandedHalfW = collapsedHalfW + sideSlots * actionSlotW
+    local islandMaxHalfW = math.max(collapsedHalfW, (State.W - 28) * 0.5)
+    expandedHalfW = math.min(expandedHalfW, islandMaxHalfW)
 
     local targetExpand = (hasActions and island.Open) and 1 or 0
     if State.NoAnim then
@@ -2705,14 +2710,15 @@ local function DrawTitleBar(title, subtitle)
         end
     end
 
-    -- Snap the island itself to an even pixel width around the exact window
-    -- centre. This keeps the visible left/right padding identical instead of
-    -- allowing half-pixel rounding to make one side look wider.
-    local islandW = math.floor(collapsedW + (expandedW - collapsedW) * island.Expand + 0.5)
-    if islandW % 2 ~= 0 then islandW = islandW + 1 end
+    -- Expand from a single half-width around the exact same centre used by
+    -- the title. Deriving both edges from that centre prevents one-sided growth.
     local islandH = 32
     local islandCX = math.floor(State.X + State.W * 0.5 + 0.5)
-    local islandX = islandCX - islandW * 0.5
+    local currentHalfW = math.floor(
+        collapsedHalfW + (expandedHalfW - collapsedHalfW) * island.Expand + 0.5
+    )
+    local islandX = islandCX - currentHalfW
+    local islandW = currentHalfW * 2
     local islandY = math.floor(State.Y + (Layout.TopbarH - islandH) * 0.5 + 0.5)
 
     -- Current Roblox experience name on the far-left of the header. Keep this
@@ -3275,9 +3281,9 @@ Register("Button", function(parent, opts)
         local th = State.Theme
         local h = Layout.ButtonH
 
-        local btnW = math.max(60,
-            math.min(w * 0.4,
-                     TextWidth(self.ButtonText, Layout.TextSize, Fonts.SystemBold) + 24))
+        local labelText = tostring(self.ButtonText)
+        local measuredLabelW = TextWidth(labelText, Layout.TextSize, Fonts.SystemBold)
+        local btnW = math.min(w, math.max(42, math.ceil(measuredLabelW + 24)))
         local btnX = x + w - btnW
         local btnY = y + 3
 
@@ -3302,15 +3308,19 @@ Register("Button", function(parent, opts)
         Rect(btnX, btnY, btnW, h, bg, 52, 6, bgA)
         Stroke(btnX, btnY, btnW, h, accent, 53, 6, 0.35 + 0.45 * glow)
 
-        -- Constrain the visible label to the actual button interior. The button
-        -- itself deliberately stays compact; long action names are ellipsized
-        -- instead of being centred at full width and leaking outside the border.
+        -- Size the button from its content. Short labels stay compact while
+        -- longer labels grow naturally. Only fall back to trimming when the
+        -- available row/cell itself is physically too narrow for the label.
         local labelRoom = math.max(8, btnW - 14)
-        local label = TrimText(tostring(self.ButtonText), labelRoom,
-                               Layout.TextSize, Fonts.SystemBold)
+        local label = labelText
+        if measuredLabelW > labelRoom then
+            label = TrimText(labelText, labelRoom,
+                             Layout.TextSize, Fonts.SystemBold)
+        end
         local lw = TextWidth(label, Layout.TextSize, Fonts.SystemBold)
         local lc = mix(th.Text, accent, glow * 0.7)
-        Text(label, btnX + (btnW - lw) / 2, TextMidY(btnY, h, Layout.TextSize),
+        Text(label, math.floor(btnX + (btnW - lw) * 0.5 + 0.5),
+             TextMidY(btnY, h, Layout.TextSize),
              lc, Layout.TextSize, Fonts.SystemBold, 54,
              self.Enabled and 1 or 0.5, labelRoom, false)
 
@@ -3327,9 +3337,9 @@ Register("Button", function(parent, opts)
     function self:Input(x, y, w)
         if not self.Enabled then return end
         local h = Layout.ButtonH
-        local btnW = math.max(60,
-            math.min(w * 0.4,
-                     TextWidth(self.ButtonText, Layout.TextSize, Fonts.SystemBold) + 24))
+        local labelText = tostring(self.ButtonText)
+        local measuredLabelW = TextWidth(labelText, Layout.TextSize, Fonts.SystemBold)
+        local btnW = math.min(w, math.max(42, math.ceil(measuredLabelW + 24)))
         local btnX = x + w - btnW
         local btnY = y + 3
 
@@ -7724,7 +7734,7 @@ end)
 
 
 
-Library.Version = "1.4.2"
+Library.Version = "1.4.3"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
