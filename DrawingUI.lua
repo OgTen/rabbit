@@ -922,14 +922,11 @@ local function ReadInput()
     Input.DX = Input.X - Input.PrevX
     Input.DY = Input.Y - Input.PrevY
 
-    local l, r, m = false, false, false
-
-    pcall(function() l = ismouse1pressed() end)
-    pcall(function() r = ismouse2pressed() end)
-    pcall(function()
-        -- middle button via raw keycode
-        m = iskeypressed(0x04)
-    end)
+    -- Match INSui: read Matcha input state directly. Wrapping these calls in
+    -- pcall can leave stale false values around an input-ownership transition.
+    local l = ismouse1pressed()
+    local r = ismouse2pressed()
+    local m = iskeypressed(0x04)
 
     Input.Down      = l
     Input.RightDown = r
@@ -1104,8 +1101,7 @@ AddKey("Grave",    0xC0, "`", "~")
 local function ReadKeys()
     for i = 1, #KeyList do
         local k = KeyList[i]
-        local held = false
-        pcall(function() held = iskeypressed(k.Code) end)
+        local held = iskeypressed(k.Code)
         k.Click = held and not k.Held
         k.Held = held
     end
@@ -1411,7 +1407,9 @@ local State = {
     -- lifecycle
     Alive       = true,
     Frame       = 0,
+    GameInput   = true,    -- INSui default: capture only while the mouse is over the UI
     InputSent   = true,
+    DestroyCallbacks = {},
     Delta       = 1 / 60,
     LastTick    = os.clock(),
 
@@ -1432,6 +1430,12 @@ local State = {
         ImageSource = nil,
         Title = nil,
         LogoSize = 50,
+        ShowLogo = true,
+        ShowGameName = true,
+        Border = true,
+        AccentBar = true,
+        FooterAccent = true,
+        CornerRadius = 14,
         BackgroundImage = nil,
         BackgroundImageSource = nil,
         BackgroundOpacity = 0.22,
@@ -1462,6 +1466,9 @@ local State = {
     -- window identity / appearance
     WindowTitle    = "Window",
     WindowSubtitle = "",
+    GameName       = "",
+    ShowGameName   = true,
+    ShowLogo       = true,
     Logo           = nil,
     LogoSource     = nil,
     LogoSize       = 30,
@@ -1485,14 +1492,30 @@ local State = {
     NotificationPosition = "top_left",
 }
 
-function State.SyncGameInput(force)
-    if type(setrobloxinput) ~= "function" then return end
+do
+    local function GameCaptures()
+        -- DrawingUI's splash is part of the interface lifecycle and captures
+        -- input before the main window becomes interactive.
+        if State.Startup.Active then return true end
+        if not State.Open then return false end
+        if State.GameInput == "always" then return false end
+        if State.GameInput ~= true then return true end
+        if State.Popup then return true end
 
-    local toGame = Focus.Field == nil
-    if not force and State.InputSent == toGame then return end
+        return MouseIn(State.X, State.Y, State.W, State.H)
+    end
 
-    State.InputSent = toGame
-    pcall(setrobloxinput, toGame)
+    function State.ApplyInputState(force)
+        if type(setrobloxinput) ~= "function" then return end
+
+        local ToGame = not GameCaptures()
+
+        if not force and State.InputSent == ToGame then return end
+
+        State.InputSent = ToGame
+
+        setrobloxinput(ToGame)
+    end
 end
 
 
@@ -2316,125 +2339,114 @@ local function DrawStartupFrame()
     local th = State.Theme
     local x, y, w, h = State.X, State.Y, State.W, State.H
     local st = State.Startup
-
-    GlassSurface(x, y, w, h, rgb(14, 16, 23), 10, Layout.Corner)
-
-    -- Optional splash-only background image. It deliberately fills the complete
-    -- card so the splash can have its own artwork independently of the window.
-    if st.BackgroundImage and st.BackgroundOpacity > 0 then
-        DrawPicture(st.BackgroundImage, x, y, w, h, Layer(11),
-                    math.max(0, math.min(1, st.BackgroundOpacity)), Layout.Corner)
-        -- A quiet dark wash keeps white typography readable over bright artwork.
-        Rect(x, y, w, h, rgb(8, 10, 15), 12, Layout.Corner, 0.24)
-    else
-        HidePicture(st.BackgroundImage)
-    end
-
-    DrawGlassBorder(th)
-
-    -- Premium identity sequence:
-    --   1) a large framed logo begins centered
-    --   2) it glides left and fully settles
-    --   3) after a short pause, the title emerges from the logo and types
-    --   4) the typing title softly settles from muted white into pure white
-    local logoSize = math.max(28, math.min(64, tonumber(st.LogoSize) or 50))
-    local logoBorder = 2
-    local centerLogoX = x + (w - logoSize) / 2
-    local finalLogoX = x + 16
-    local logoY = y + (h - logoSize) / 2
-
     local duration = math.max(0.5, st.Duration or 5)
-    local logoMoveStart = duration * 0.055
-    local logoMoveEnd   = duration * 0.235
+    local p = math.max(0, math.min(1, st.Time / duration))
 
-    -- The title is choreographed from the logo movement rather than from an
-    -- unrelated percentage of the splash duration. Let the logo fully settle,
-    -- breathe for a moment, then begin typing.
-    local titleStart    = logoMoveEnd + math.max(0.07, math.min(0.14, duration * 0.018))
-    local titleEnd      = math.max(titleStart + 0.55, duration * 0.74)
-
-    local function Smooth01(v)
+    local function Smooth(v)
         v = math.max(0, math.min(1, v))
         return v * v * (3 - 2 * v)
     end
 
-    local moveT = Smooth01((st.Time - logoMoveStart) /
-                           math.max(0.001, logoMoveEnd - logoMoveStart))
-    local logoX = centerLogoX + (finalLogoX - centerLogoX) * moveT
+    local intro = Smooth(p / 0.18)
+    local logoReveal = Smooth((p - 0.07) / 0.20)
+    local titleReveal = Smooth((p - 0.18) / 0.20)
+    local detailReveal = Smooth((p - 0.28) / 0.18)
+    local settle = Smooth((p - 0.40) / 0.28)
+    local corner = math.max(6, math.min(24, tonumber(st.CornerRadius) or 14))
 
-    -- Visible neutral frame around the image; intentionally not accent-coloured.
-    Rect(logoX - logoBorder, logoY - logoBorder,
-         logoSize + logoBorder * 2, logoSize + logoBorder * 2,
-         rgb(95, 99, 111), 30, 9, 0.88)
-    Rect(logoX, logoY, logoSize, logoSize, rgb(17, 19, 26), 31, 7, 1)
+    -- Cleaner single-surface splash. The old inset/shadow box has been removed;
+    -- the theme-coloured border is now the primary frame treatment.
+    GlassSurface(x, y, w, h, rgb(11, 13, 20), 10, corner)
 
-    local logoReady = DrawPicture(st.Image or State.Logo, logoX, logoY,
-                                  logoSize, logoSize, Layer(34), 1, 7)
-
-    if not logoReady then
-        local pulse = 0.68 + math.sin(os.clock() * 2.0) * 0.10
-        Rect(logoX + logoSize * 0.18, logoY + logoSize * 0.48,
-             logoSize * 0.64, 2, th.TextDim, 32, 1, pulse)
+    if st.BackgroundImage and st.BackgroundOpacity > 0 then
+        DrawPicture(st.BackgroundImage, x, y, w, h, Layer(11),
+                    math.max(0, math.min(1, st.BackgroundOpacity)), corner)
+        Rect(x, y, w, h, rgb(7, 9, 14), 12, corner, 0.48)
+    else
+        HidePicture(st.BackgroundImage)
     end
 
-    local title = tostring(st.Title or State.WindowTitle or "DRAWING UI")
-    local titleSize = 16
-    local finalTitleX = finalLogoX + logoSize + 15
-    local titleY = math.floor(y + (h - titleSize) / 2 + 0.5)
-    local typedTitle = ""
+    if st.Border ~= false then
+        Stroke(x, y, w, h, th.Accent, 20, corner, 0.58 * intro)
+        Stroke(x + 1, y + 1, w - 2, h - 2, th.Stroke,
+               21, math.max(5, corner - 1), 0.34 * intro)
+    end
 
-    if st.Time >= titleStart then
-        local typeDuration = math.max(0.001, titleEnd - titleStart)
-        local charInterval = typeDuration / math.max(1, #title)
+    -- Keep the v1.4 top accent rail and its centre-out fade/reveal.
+    if st.AccentBar ~= false then
+        local railW = math.max(1, (w - 48) * intro)
+        GradientRect(x + (w - railW) / 2, y + 13,
+                     railW, 2, th.AccentA, th.AccentB,
+                     25, 0.88 * intro, 18)
+    end
 
-        -- Accumulate elapsed render time, but reveal at most one character on
-        -- each rendered frame. This prevents frame-time spikes from jumping
-        -- over intermediate characters on longer splash titles.
-        local now = st.Time
-        local previous = st.TypewriterLastTime or titleStart
-        if previous < titleStart then previous = titleStart end
-        local elapsed = math.max(0, now - previous)
-        st.TypewriterLastTime = now
-        st.TypewriterAccumulator = (st.TypewriterAccumulator or 0) + elapsed
+    local hasLogo = st.ShowLogo ~= false and st.Image ~= nil
+    local logoSize = math.max(36, math.min(76, tonumber(st.LogoSize) or 56))
+    local logoCX = x + w * 0.5
+    local logoTargetY = y + 29
+    local logoLift = (1 - logoReveal) * 10
+    local logoX = logoCX - logoSize / 2
+    local logoY = logoTargetY + logoLift
 
-        if (st.TypewriterCount or 0) == 0 then
-            st.TypewriterCount = 1
-            st.TypewriterAccumulator = 0
-        elseif st.TypewriterCount < #title and st.TypewriterAccumulator >= charInterval then
-            st.TypewriterCount = st.TypewriterCount + 1
-            st.TypewriterAccumulator = st.TypewriterAccumulator - charInterval
+    -- No halo/circle/backing box. When a real logo exists it gets only a
+    -- compact border that follows the active theme.
+    if hasLogo then
+        Stroke(logoX - 4, logoY - 4, logoSize + 8, logoSize + 8,
+               th.Accent, 28, 12, 0.72 * logoReveal)
+        DrawPicture(st.Image, logoX, logoY,
+                    logoSize, logoSize, Layer(32), logoReveal, 9)
+    else
+        HidePicture(st.Image)
+    end
 
-            -- Do not retain a huge backlog after a hitch. The goal is a
-            -- consistent visible typewriter, not catching up by skipping.
-            if st.TypewriterAccumulator > charInterval * 2 then
-                st.TypewriterAccumulator = charInterval
-            end
+    local title = string.upper(tostring(st.Title or State.WindowTitle or "DRAWING UI"))
+    local titleSize = 17
+    local titleW = TextWidth(title, titleSize, Fonts.SystemBold)
+
+    -- If no logo is configured, reclaim its vertical space instead of leaving
+    -- an empty logo slot.
+    local titleBaseY
+    if hasLogo then
+        titleBaseY = y + 29 + logoSize + 21
+    else
+        titleBaseY = y + 47
+    end
+    local titleY = titleBaseY + (1 - titleReveal) * 6
+
+    Text(title, x + (w - titleW) / 2, titleY,
+         th.Text, titleSize, Fonts.SystemBold, 35,
+         0.98 * titleReveal, math.max(40, w - 34), false)
+
+    if st.ShowGameName ~= false and State.GameName and State.GameName ~= "" then
+        local context = string.upper(tostring(State.GameName))
+        local contextSize = 10
+        local contextMaxW = math.max(60, w - 52)
+
+        while #context > 1 and TextWidth(context, contextSize, Fonts.SystemBold) > contextMaxW do
+            context = string.sub(context, 1, #context - 1)
         end
 
-        local charCount = math.min(#title, st.TypewriterCount or 0)
-        typedTitle = string.sub(title, 1, charCount)
+        local contextW = TextWidth(context, contextSize, Fonts.SystemBold)
+        Text(context, x + (w - contextW) / 2, titleY + 25,
+             th.TextDim, contextSize, Fonts.SystemBold, 35,
+             0.72 * detailReveal, contextMaxW, false)
+    end
 
-        if typedTitle ~= "" then
-            -- Render the typewriter as one continuous Text object. Splitting the
-            -- newest character into a second object causes visible kerning gaps
-            -- in Matcha because TextWidth does not perfectly match glyph layout.
-            --
-            -- TextFade now softly settles the whole currently-visible word from
-            -- muted white toward pure white during the early typing sequence.
-            -- Character placement therefore never depends on measured widths.
-            local level = 1
-            if st.TextFade then
-                local typeDuration = math.max(0.001, titleEnd - titleStart)
-                local fadeT = math.max(0, math.min(1, (st.Time - titleStart) /
-                                                   math.max(0.12, typeDuration * 0.30)))
-                fadeT = fadeT * fadeT * (3 - 2 * fadeT)
-                level = 0.72 + 0.28 * fadeT
-            end
-
-            Text(typedTitle, finalTitleX, titleY, Color3.new(level, level, level),
-                 titleSize, Fonts.SystemBold, 35, 1,
-                 math.max(40, w - (finalTitleX - x) - 18))
-        end
+    -- Brighter lower ornament. It is still decorative rather than a progress
+    -- indicator, but now has enough contrast to be an intentional visual motif.
+    if st.FooterAccent ~= false then
+        local footerY = y + h - 19
+        local ornament = 48 + 16 * settle
+        GradientRect(logoCX - ornament - 9, footerY, ornament, 2,
+                     th.AccentB, th.AccentA, 25,
+                     0.74 * detailReveal, 10)
+        GradientRect(logoCX + 9, footerY, ornament, 2,
+                     th.AccentB, th.AccentA, 25,
+                     0.74 * detailReveal, 10)
+        Circle(logoCX, footerY + 1, 3, th.Accent,
+               26, true, 1, 18, 0.96 * detailReveal)
+        Circle(logoCX, footerY + 1, 5, th.Accent,
+               25, false, 1, 18, 0.54 * detailReveal)
     end
 end
 
@@ -2457,7 +2469,7 @@ local function TickStartup(dt)
     if st.Phase == "shrink" then
         local t = math.min(st.Time / st.ShrinkDuration, 1)
         local eased = t * t * (3 - 2 * t)
-        local minW, minH = 34, 5
+        local minW, minH = 64, 64
         State.W = st.StartW + (minW - st.StartW) * eased
         State.H = st.StartH + (minH - st.StartH) * eased
         State.X = st.StartX + (st.StartW - State.W) / 2
@@ -2474,9 +2486,9 @@ local function TickStartup(dt)
 
     if st.Phase == "pop" then
         local t = math.min(st.Time / st.PopDuration, 1)
-        local c1, c3 = 1.32, 2.32
+        local c1, c3 = 1.18, 2.18
         local eased = 1 + c3 * ((t - 1) ^ 3) + c1 * ((t - 1) ^ 2)
-        local minW, minH = 34, 5
+        local minW, minH = 64, 64
         State.W = minW + (st.TargetW - minW) * eased
         State.H = minH + (st.TargetH - minH) * eased
         State.X = st.TargetX + (st.TargetW - State.W) / 2
@@ -2511,7 +2523,13 @@ local function StartStartup(opts)
     st.Duration = math.max(0.5, tonumber(opts.Duration) or 5.0)
     st.TextFade = opts.TextFade ~= false
     st.Title = opts.Title ~= nil and tostring(opts.Title) or State.WindowTitle
-    st.LogoSize = math.max(28, math.min(64, tonumber(opts.LogoSize) or 50))
+    st.LogoSize = math.max(36, math.min(76, tonumber(opts.LogoSize) or 56))
+    st.ShowLogo = opts.ShowLogo ~= false
+    st.ShowGameName = opts.ShowGameName ~= false
+    st.Border = opts.Border ~= false
+    st.AccentBar = opts.AccentBar ~= false
+    st.FooterAccent = opts.FooterAccent ~= false
+    st.CornerRadius = math.max(6, math.min(24, tonumber(opts.CornerRadius) or 14))
     st.BackgroundOpacity = tonumber(opts.BackgroundOpacity) or 0.22
     if st.BackgroundOpacity > 1 then st.BackgroundOpacity = st.BackgroundOpacity / 100 end
     st.BackgroundOpacity = math.max(0, math.min(1, st.BackgroundOpacity))
@@ -2559,14 +2577,16 @@ local function StartStartup(opts)
     st.Phase = "loading"
     st.Active = true
 
-    local splashW, splashH = 330, 86
+    local splashW, splashH = 300, 196
     local size = opts.Size
     if type(size) == "userdata" or type(size) == "table" then
         splashW = tonumber(size.X or size.x or size[1]) or splashW
         splashH = tonumber(size.Y or size.y or size[2]) or splashH
     end
-    splashW = math.max(220, math.min(560, splashW))
-    splashH = math.max(st.LogoSize + 18, math.min(160, splashH))
+    splashW = math.max(260, math.min(460, splashW))
+    local minSplashH = (st.ShowLogo ~= false and st.Image ~= nil)
+        and (st.LogoSize + 112) or 138
+    splashH = math.max(minSplashH, math.min(280, splashH))
 
     st.StartW = splashW
     st.StartH = splashH
@@ -2685,6 +2705,33 @@ local function DrawTitleBar(title, subtitle)
     local islandCX = State.X + State.W * 0.5
     local islandX = islandCX - islandW * 0.5
     local islandY = State.Y + (Layout.TopbarH - islandH) * 0.5
+
+    -- Current Roblox experience name on the far-left of the header. Keep this
+    -- deliberately quieter than the centred island title and truncate it before
+    -- it can collide with the island.
+    if State.ShowGameName and State.GameName and State.GameName ~= "" then
+        local gameText = string.upper(tostring(State.GameName))
+        local gameTextSize = 11
+        local gameX = State.X + 14
+        local gameMaxW = math.max(0, islandX - gameX - 12)
+
+        if gameMaxW >= 28 then
+            local suffix = "..."
+            while #gameText > 1 and TextWidth(gameText, gameTextSize, Fonts.SystemBold) > gameMaxW do
+                gameText = string.sub(gameText, 1, #gameText - 1)
+            end
+            if gameText ~= string.upper(tostring(State.GameName)) and #gameText > 3 then
+                while #gameText > 1 and TextWidth(gameText .. suffix, gameTextSize, Fonts.SystemBold) > gameMaxW do
+                    gameText = string.sub(gameText, 1, #gameText - 1)
+                end
+                gameText = gameText .. suffix
+            end
+
+            Text(gameText, gameX, TextMidY(State.Y, Layout.TopbarH, gameTextSize),
+                 th.TextDim, gameTextSize, Fonts.SystemBold, 33, 0.78,
+                 gameMaxW, false)
+        end
+    end
 
     FrostedSurface(islandX, islandY, islandW, islandH,
                    th.Panel, 31, 10)
@@ -2880,29 +2927,23 @@ local function DrawTabRail()
     -- The logo remains the sidebar's visual anchor, but branding text stays
     -- in the floating island. A larger logo gives the rail identity without
     -- consuming enough vertical space to noticeably push the tab list down.
-    local brandH = 49
+    local hasBrandLogo = State.ShowLogo ~= false and State.Logo ~= nil
+    local brandH = hasBrandLogo and 49 or 6
     local brandLogoSize = 38
     local brandLogoX = sectionX + (sectionW - brandLogoSize) * 0.5
     local brandLogoY = sectionY + 6
 
-    if State.Logo then
+    if hasBrandLogo then
         DrawPicture(State.Logo, brandLogoX, brandLogoY,
                     brandLogoSize, brandLogoSize,
                     Layer(40), FrameAlpha, 8)
-    else
-        Rect(brandLogoX, brandLogoY,
-             brandLogoSize, brandLogoSize,
-             th.Accent, 40, 8, 0.10)
-        Stroke(brandLogoX, brandLogoY,
-               brandLogoSize, brandLogoSize,
-               th.Accent, 41, 8, 0.42)
-    end
 
-    -- A short divider keeps the logo visually separated from navigation while
-    -- remaining lighter than the old branding block.
-    Line(sectionX + 13, sectionY + brandH,
-         sectionX + sectionW - 13, sectionY + brandH,
-         th.Stroke, 39, 1, 0.26)
+        -- Divider only belongs to the logo treatment; with no logo configured
+        -- the navigation simply starts near the top of the sidebar.
+        Line(sectionX + 13, sectionY + brandH,
+             sectionX + sectionW - 13, sectionY + brandH,
+             th.Stroke, 39, 1, 0.26)
+    end
 
     local rowY = sectionY + brandH + 7
     local padX = 8
@@ -3071,6 +3112,7 @@ function Base.New(kind, parent, opts)
         Hidden      = false,
         Enabled     = true,
         ConfigKey   = opts.ConfigKey or opts.configKey or opts.Flag or opts.flag,
+        DeclaredDefault = opts.Default ~= nil and opts.Default or opts.default,
         _listeners  = {},
         _hover      = 0,
         _press      = 0,
@@ -3217,6 +3259,7 @@ Register("Button", function(parent, opts)
     local self = Base.New("Button", parent, opts)
     self.ButtonText = opts.ButtonText or "Run"
     self.Callback   = opts.Callback
+    self.Variant    = string.lower(tostring(opts.Variant or opts.variant or "default"))
     self.Height     = Layout.ButtonH + 6
 
     function self:Draw(x, y, w)
@@ -3233,15 +3276,26 @@ Register("Button", function(parent, opts)
         TickAnim(self, hover, hover and Input.Down, State.Delta)
 
         local glow = self._hover
-        local bg = mix(th.PanelHi, th.Accent, glow * 0.5)
-        local bgA = 0.7 + 0.25 * glow
+        local accent = th.Accent
+        local bgBase = th.PanelHi
+        if self.Variant == "danger" then
+            accent = Color3.fromRGB(245, 82, 96)
+            bgBase = mix(th.PanelHi, accent, 0.16)
+        elseif self.Variant == "primary" or self.Variant == "accent" then
+            bgBase = mix(th.PanelHi, accent, 0.22)
+        elseif self.Variant == "ghost" then
+            bgBase = th.Panel
+        end
+
+        local bg = mix(bgBase, accent, glow * 0.5)
+        local bgA = self.Variant == "ghost" and (0.38 + 0.22 * glow) or (0.7 + 0.25 * glow)
 
         Rect(btnX, btnY, btnW, h, bg, 52, 6, bgA)
-        Stroke(btnX, btnY, btnW, h, th.Accent, 53, 6, 0.35 + 0.45 * glow)
+        Stroke(btnX, btnY, btnW, h, accent, 53, 6, 0.35 + 0.45 * glow)
 
         local label = self.ButtonText
         local lw = TextWidth(label, Layout.TextSize, Fonts.SystemBold)
-        local lc = mix(th.Text, th.Accent, glow * 0.7)
+        local lc = mix(th.Text, accent, glow * 0.7)
         Text(label, btnX + (btnW - lw) / 2, TextMidY(btnY, h, Layout.TextSize),
              lc, Layout.TextSize, Fonts.SystemBold, 54, self.Enabled and 1 or 0.5)
 
@@ -3578,6 +3632,182 @@ Register("Slider", function(parent, opts)
         end
     end
 
+    return self
+end)
+
+-- ============================================================================
+--  SEGMENTED  --  compact single-choice selector
+-- ============================================================================
+
+Register("Segmented", function(parent, opts)
+    opts = opts or {}
+    local self = Base.New("Segmented", parent, opts)
+    self.Options = opts.Options or opts.options or {"One", "Two"}
+    self.Value = opts.Default or opts.default or self.Options[1]
+    self.Callback = opts.Callback or opts.callback
+    self.Height = Layout.ButtonH + 8
+
+    function self:GetValue() return self.Value end
+
+    function self:SetValue(v, silent)
+        local valid = false
+        for _, option in ipairs(self.Options) do
+            if option == v then valid = true break end
+        end
+        if not valid or self.Value == v then return end
+        self.Value = v
+        if not silent then
+            if self.Callback then pcall(self.Callback, v) end
+            self:_Fire(v)
+        end
+    end
+
+    function self:Draw(x, y, w)
+        local th = State.Theme
+        local n = math.max(1, #self.Options)
+        local gap = 2
+        local totalW = math.min(w, math.max(150, n * 58))
+        local startX = x + w - totalW
+        local cellW = (totalW - (n - 1) * gap) / n
+        local h = Layout.ButtonH
+
+        if self.Title ~= "" then
+            Text(self.Title, x, TextMidY(y + 3, h, Layout.TextSize),
+                 th.Text, Layout.TextSize, Fonts.System, 51,
+                 self.Enabled and 0.92 or 0.4,
+                 math.max(1, startX - x - 10))
+        end
+
+        for i, option in ipairs(self.Options) do
+            local bx = startX + (i - 1) * (cellW + gap)
+            local selected = option == self.Value
+            local hover = self.Enabled and MouseIn(bx, y + 3, cellW, h)
+            local bg = selected and mix(th.PanelHi, th.Accent, 0.32) or th.PanelHi
+            local alpha = selected and 0.92 or (hover and 0.82 or 0.62)
+            Rect(bx, y + 3, cellW, h, bg, 52, 5, alpha)
+            Stroke(bx, y + 3, cellW, h, selected and th.Accent or th.Stroke,
+                   53, 5, selected and 0.72 or 0.42)
+
+            local label = tostring(option)
+            local maxW = math.max(1, cellW - 10)
+            while #label > 1 and TextWidth(label, Layout.TextSize, Fonts.SystemBold) > maxW do
+                label = string.sub(label, 1, #label - 1)
+            end
+            local lw = TextWidth(label, Layout.TextSize, Fonts.SystemBold)
+            Text(label, bx + (cellW - lw) / 2, TextMidY(y + 3, h, Layout.TextSize),
+                 selected and th.Accent or th.Text,
+                 Layout.TextSize, Fonts.SystemBold, 54,
+                 self.Enabled and 1 or 0.4, maxW)
+        end
+    end
+
+    function self:Input(x, y, w)
+        if not self.Enabled then return end
+        local n = math.max(1, #self.Options)
+        local gap = 2
+        local totalW = math.min(w, math.max(150, n * 58))
+        local startX = x + w - totalW
+        local cellW = (totalW - (n - 1) * gap) / n
+        local h = Layout.ButtonH
+
+        if Input.Click then
+            for i, option in ipairs(self.Options) do
+                local bx = startX + (i - 1) * (cellW + gap)
+                if MouseIn(bx, y + 3, cellW, h) then
+                    Input.Click = false
+                    self:SetValue(option)
+                    return
+                end
+            end
+        end
+    end
+
+    return self
+end)
+
+-- ============================================================================
+--  PROGRESS  --  read-only progress/value display
+-- ============================================================================
+
+Register("Progress", function(parent, opts)
+    opts = opts or {}
+    local self = Base.New("Progress", parent, opts)
+    self.Min = tonumber(opts.Min) or 0
+    self.Max = tonumber(opts.Max) or 100
+    self.Value = Clamp(tonumber(opts.Default or opts.Value) or self.Min, self.Min, self.Max)
+    self.Suffix = tostring(opts.Suffix or "%")
+    self.Height = 34
+
+    function self:GetValue() return self.Value end
+    function self:SetValue(v)
+        self.Value = Clamp(tonumber(v) or self.Min, self.Min, self.Max)
+    end
+
+    function self:Draw(x, y, w)
+        local th = State.Theme
+        local valueText = tostring(math.floor(self.Value * 100 + 0.5) / 100) .. self.Suffix
+        Text(self.Title, x, y, th.Text, Layout.TextSize, Fonts.System, 51,
+             self.Enabled and 0.92 or 0.4, math.max(1, w - 70))
+        local vw = TextWidth(valueText, Layout.SmallSize, Fonts.SystemBold)
+        Text(valueText, x + w - vw, y + 1, th.Accent, Layout.SmallSize,
+             Fonts.SystemBold, 52, self.Enabled and 0.95 or 0.4)
+
+        local barY = y + 21
+        local frac = (self.Value - self.Min) / math.max(0.0001, self.Max - self.Min)
+        Rect(x, barY, w, 6, th.Track, 51, 3, 0.72)
+        if frac > 0 then
+            Rect(x, barY, math.max(2, w * frac), 6, th.Accent, 52, 3, 0.9)
+        end
+    end
+
+    function self:Input() end
+    return self
+end)
+
+-- ============================================================================
+--  STATUS  --  compact read-only state badge
+-- ============================================================================
+
+Register("Status", function(parent, opts)
+    opts = opts or {}
+    local self = Base.New("Status", parent, opts)
+    self.Value = tostring(opts.Default or opts.Value or "Ready")
+    self.Tone = string.lower(tostring(opts.Tone or "accent"))
+    self.Height = 28
+
+    function self:GetValue() return self.Value end
+    function self:SetValue(v, tone)
+        self.Value = tostring(v or "")
+        if tone ~= nil then self.Tone = string.lower(tostring(tone)) end
+    end
+
+    function self:Draw(x, y, w)
+        local th = State.Theme
+        local accent = th.Accent
+        if self.Tone == "success" then
+            accent = Color3.fromRGB(82, 220, 145)
+        elseif self.Tone == "warning" then
+            accent = Color3.fromRGB(245, 190, 82)
+        elseif self.Tone == "danger" or self.Tone == "error" then
+            accent = Color3.fromRGB(245, 82, 96)
+        elseif self.Tone == "muted" then
+            accent = th.TextDim
+        end
+
+        Text(self.Title, x, TextMidY(y, 24, Layout.TextSize),
+             th.Text, Layout.TextSize, Fonts.System, 51,
+             self.Enabled and 0.92 or 0.4, math.max(1, w - 100))
+
+        local badgeW = math.max(54, TextWidth(self.Value, Layout.SmallSize, Fonts.SystemBold) + 18)
+        local bx = x + w - badgeW
+        Rect(bx, y + 2, badgeW, 22, mix(th.PanelHi, accent, 0.18), 52, 11, 0.86)
+        Stroke(bx, y + 2, badgeW, 22, accent, 53, 11, 0.55)
+        local tw = TextWidth(self.Value, Layout.SmallSize, Fonts.SystemBold)
+        Text(self.Value, bx + (badgeW - tw) / 2, TextMidY(y + 2, 22, Layout.SmallSize),
+             accent, Layout.SmallSize, Fonts.SystemBold, 54, 0.96)
+    end
+
+    function self:Input() end
     return self
 end)
 
@@ -4025,6 +4255,8 @@ Register("RangeSlider", function(parent, opts)
     self.Step     = opts.Step or 1
     self.Low      = opts.DefaultLow or self.Min
     self.High     = opts.DefaultHigh or self.Max
+    self.DeclaredDefaultLow = self.Low
+    self.DeclaredDefaultHigh = self.High
     self.Suffix   = opts.Suffix or ""
     self.Callback = opts.Callback
     self.Height   = 38
@@ -4312,30 +4544,21 @@ Register("Dropdown", function(parent, opts)
 
     function self:_BuildPopupGeometry(fieldX, fieldY, fieldW, h)
         local rowH = 22
-        local maxVisible = 8
+        local rowGap = 2
+        local maxVisible = math.max(3, math.floor(tonumber(opts.VisibleRows or opts.visibleRows) or 6))
         local visible = math.min(#self.Options, maxVisible)
-        local listH = visible * rowH + 8
 
-        -- One canonical on-screen rectangle is used by drawing AND input.
-        -- Size the selector to its actual content instead of always stretching
-        -- to the full field width. It can grow to a fixed cap, then text uses
-        -- ellipsis inside the popup.
+        -- Popup dimensions are intentionally stable. Adding/removing options no
+        -- longer changes the menu size; overflow is handled by the scrollbar.
+        local fixedRows = maxVisible
+        local listH = 8 + fixedRows * rowH + math.max(0, fixedRows - 1) * rowGap
+
         local minX = Geometry.ContentX + 4
         local maxRight = Geometry.ContentX + Geometry.ContentW - 4
         local availableW = math.max(70, maxRight - minX)
-        local maxPopupW = math.min(260, availableW)
+        local requestedW = tonumber(opts.PopupWidth or opts.popupWidth) or 210
+        local popupW = Clamp(math.max(fieldW, requestedW), 70, availableW)
 
-        local widest = TextWidth(self:_DisplayValue(), Layout.TextSize, Fonts.SystemBold)
-        for _, option in ipairs(self.Options) do
-            widest = math.max(widest, TextWidth(tostring(option), Layout.TextSize, Fonts.System))
-        end
-
-        local scrollbarRoom = (#self.Options > maxVisible) and 17 or 8
-        local desiredW = widest + 18 + scrollbarRoom
-        local popupW = Clamp(math.max(fieldW, desiredW), 70, maxPopupW)
-
-        -- Prefer aligning the popup's right edge with the selector field. This
-        -- keeps a compact popup visually attached to the selected-value chip.
         local preferredX = fieldX + fieldW - popupW
         local popupX = Clamp(preferredX, minX, math.max(minX, maxRight - popupW))
         local popupY = fieldY + h + 3
@@ -4345,12 +4568,13 @@ Register("Dropdown", function(parent, opts)
         local trackX = popupX + popupW - barW - 3
         local trackY = popupY + 4
         local trackH = listH - 8
-        local thumbH = maxScroll > 0 and math.max(14, trackH * (maxVisible / #self.Options)) or trackH
+        local thumbH = maxScroll > 0 and math.max(14, trackH * (maxVisible / math.max(#self.Options, 1))) or trackH
         local travel = math.max(1, trackH - thumbH)
 
         return {
             X = popupX, Y = popupY, W = popupW, H = listH,
-            RowH = rowH, MaxVisible = maxVisible, Visible = visible,
+            RowH = rowH, RowGap = rowGap, RowStride = rowH + rowGap,
+            MaxVisible = maxVisible, Visible = visible,
             MaxScroll = maxScroll,
             TrackX = trackX, TrackY = trackY, TrackW = barW,
             TrackH = trackH, ThumbH = thumbH, Travel = travel,
@@ -4448,7 +4672,7 @@ Register("Dropdown", function(parent, opts)
             local option = self.Options[idx]
             if option == nil then break end
 
-            local ry = pg.Y + 4 + (i - 1) * pg.RowH
+            local ry = pg.Y + 4 + (i - 1) * pg.RowStride
             local selected = self.Multi and Contains(self.Value, option) or (option == self.Value)
             local hoverW = math.max(1, pg.W - 8 - (maxScroll > 0 and 9 or 0))
             local hover = MouseIn(pg.X + 4, ry, hoverW, pg.RowH)
@@ -4492,8 +4716,10 @@ Register("Dropdown", function(parent, opts)
         if self._open and self._popupGeom then
             local pg = self._popupGeom
             if Input.Click and MouseIn(pg.X, pg.Y, pg.W, pg.H) then
-                local row = math.floor((Input.Y - (pg.Y + 4)) / pg.RowH) + 1
-                if row >= 1 and row <= pg.Visible then
+                local localY = Input.Y - (pg.Y + 4)
+                local row = math.floor(localY / pg.RowStride) + 1
+                local withinRow = localY - (row - 1) * pg.RowStride
+                if row >= 1 and row <= pg.Visible and withinRow >= 0 and withinRow < pg.RowH then
                     local idx = row + math.floor(self._listScroll)
                     local option = self.Options[idx]
                     local scrollbarZone = pg.MaxScroll > 0 and
@@ -4680,54 +4906,39 @@ Register("ConfigTextbox", function(parent, opts)
         local color = (val == "" and not focused) and th.TextMuted or th.Text
 
         local availW = fieldW - (textX - fieldX) - 12
-        local visible = display
-        local visibleStart = 1
-        if TextWidth(visible, Layout.TextSize, Fonts.Monospace) > availW then
-            -- trim from left to show end of value
-            local excess = TextWidth(visible, Layout.TextSize, Fonts.Monospace) - availW
-            local cut = math.ceil(excess / (Layout.TextSize * (FontMetrics[Fonts.Monospace] or 0.6)))
-            visibleStart = cut + 1
-            visible = string.sub(visible, visibleStart)
-        end
+        local charWidth = Layout.TextSize * 0.50
+        local fit = math.max(1, math.floor(availW / charWidth))
+        local caret = math.max(0, math.min(self._focus.Caret or #val, #val))
+        local scroll = focused and caret > fit and caret - fit or 0
+        local visible = string.sub(display, scroll + 1, math.min(#display, scroll + fit))
 
-        -- This field has already performed its own clipping above, so do not
-        -- ask Text() to trim it a second time. Keep the returned Drawing.Text
-        -- object so the caret can use Matcha's real rendered TextBounds.
-        local textObject = Text(visible, textX, fieldY + (h - Layout.TextSize) / 2,
-                                color, Layout.TextSize, Fonts.Monospace, 54, 1)
+        if focused then
+            -- Match INSui's editor: render each character at the same fixed
+            -- advance used by the caret. This makes text and caret geometry
+            -- mathematically identical instead of relying on font metrics.
+            for index = 1, #visible do
+                Text(string.sub(visible, index, index),
+                     textX + (index - 1) * charWidth,
+                     fieldY + (h - Layout.TextSize) / 2,
+                     color, Layout.TextSize, Fonts.UI, 54, 1)
+            end
+        else
+            Text(visible, textX, fieldY + (h - Layout.TextSize) / 2,
+                 color, Layout.TextSize, Fonts.System, 54, 1)
+        end
 
         -- caret (blinking when focused)
         if focused then
             self._caretAnim = self._caretAnim - State.Delta * 1.6
             if self._caretAnim < 0 then self._caretAnim = 1 end
             local caretAlpha = (self._caretAnim > 0.5) and 1 or 0.2
-            local caret = math.max(0, math.min(self._focus.Caret or #val, #val))
+            local caretX = textX + math.min(math.max(caret - scroll, 0), #visible) * charWidth
 
-            local renderedWidth = 0
-            if textObject then
-                pcall(function()
-                    local bounds = textObject.TextBounds
-                    if bounds then renderedWidth = tonumber(bounds.X) or 0 end
-                end)
-            end
+            self._focus.CharWidth = charWidth
+            self._focus.EditX = textX
+            self._focus.Scroll = scroll
 
-            local caretX
-            if caret >= #val then
-                -- Normal typing path: use the executor's exact rendered width.
-                caretX = textX + renderedWidth + 1
-            else
-                -- Navigation inside the value: scale within the exact rendered
-                -- width instead of using the inaccurate fallback TextWidth.
-                local visibleCount = math.max(1, #visible)
-                local charsBefore = math.max(0, caret - visibleStart + 1)
-                caretX = textX + renderedWidth * (charsBefore / visibleCount)
-            end
-
-            if caret < visibleStart then caretX = textX end
-            if caretX < fieldX + 6 then caretX = fieldX + 6 end
-            if caretX > fieldX + fieldW - 6 then caretX = fieldX + fieldW - 6 end
-
-            Rect(caretX, fieldY + 4, 1.4, h - 8, th.Accent, 55, 0, caretAlpha)
+            Rect(caretX, fieldY + 4, 1.0, h - 8, th.Text, 55, 0, caretAlpha)
         end
     end
 
@@ -4737,23 +4948,32 @@ Register("ConfigTextbox", function(parent, opts)
         local fieldX = x
         local fieldY = y + 2
         local fieldW = math.max(70, w)
+        local hovered = MouseIn(fieldX, fieldY, fieldW, h)
 
-        if MouseIn(fieldX, fieldY, fieldW, h) and Input.Click then
-            -- Install the commit handler before focus so this very click leaves
-            -- the editor completely ready for the next keyboard frame.
-            self._focus.Value = self.Value
-            self._focus.Caret = #self._focus.Value
-            self._focus.Anchor = nil
+        if Input.Click and hovered then
+            self._focus.Value = (Focus.Field == self._focus) and self._focus.Value or self.Value
             self._focus.OnCommit = function(v)
                 self:SetValue(v)
             end
+
+            local charWidth = self._focus.CharWidth or (Layout.TextSize * 0.50)
+            local editX = self._focus.EditX or (fieldX + 10)
+            local scroll = self._focus.Scroll or 0
+            local hit = math.min(
+                math.max(scroll + math.floor((Input.X - editX) / charWidth + 0.5), 0),
+                #self._focus.Value
+            )
+
             SetFocus(self._focus)
+            self._focus.Caret = hit
+            self._focus.Anchor = hit
             Input.Click = false
             return
         end
 
-        -- click outside = commit the current edit, then unfocus
-        if Input.Click and Focus.Field == self._focus then
+        -- Commit when clicking elsewhere. Input routing is handled globally
+        -- after the complete UI input pass, matching INSui's lifecycle.
+        if Input.Click and Focus.Field == self._focus and not hovered then
             self:SetValue(self._focus.Value)
             ClearFocus()
         end
@@ -6120,10 +6340,8 @@ local function Render()
         return
     end
 
-    -- read mouse first. If the config editor was focused on the previous
-    -- frame, block Roblox before polling/processing this frame's keyboard.
+    -- read inputs
     ReadInput()
-    State.SyncGameInput(false)
     ReadKeys()
 
     -- measure dt
@@ -6139,16 +6357,16 @@ local function Render()
     -- text focus
     TickFocus()
 
-    -- Enter/Escape may have ended editing above; reflect that immediately.
-    State.SyncGameInput(false)
-
-    -- hotkey toggle
-    local key = string.lower(State.MenuKey)
-    local hk = Keys[string.upper(key)]
-    if hk then
-        if hk.Click then ToggleUI() end
+    -- Menu-key input is disabled for the entire startup sequence. The splash,
+    -- shrink, pop and reveal phases cannot be closed or toggled by the menu key.
+    if not State.Startup.Active then
+        local key = string.lower(State.MenuKey)
+        local hk = Keys[string.upper(key)]
+        if hk and hk.Click then
+            ToggleUI()
+            hk.Click = false
+        end
     end
-
 
     -- lifecycle
     if not State.Startup.Active then
@@ -6177,6 +6395,7 @@ local function Render()
         Geometry.Recalculate()
         ResetPool()
         DrawStartupFrame()
+        State.ApplyInputState(false)
         HideUnused()
         return
     end
@@ -6188,14 +6407,20 @@ local function Render()
         ResetPool()
         HidePicture(State.Startup.Image)
         HidePicture(State.Startup.BackgroundImage)
-        local radius = math.min(Layout.Corner, math.max(1, State.H / 2))
-        GlassSurface(State.X, State.Y, State.W, State.H, rgb(14, 16, 23), 10, radius)
-        Stroke(State.X, State.Y, State.W, State.H, Color3.new(1, 1, 1), 20, radius, 0.72)
-        if State.H <= 12 then
-            Rect(State.X + 5, State.Y + State.H / 2 - 1,
-                 math.max(1, State.W - 10), 2,
-                 State.Theme.TextDim, 31, 1, 0.58)
-        end
+        local radius = math.min(18, math.max(8, State.H * 0.22))
+        GlassSurface(State.X, State.Y, State.W, State.H, rgb(11, 13, 20), 10, radius)
+        Stroke(State.X, State.Y, State.W, State.H, State.Theme.Stroke, 20, radius, 0.62)
+
+        -- New handoff: the portrait panel contracts into a compact identity
+        -- tile. A restrained centre glow replaces the old pill/line collapse.
+        local collapseT = math.min(State.Startup.Time / State.Startup.ShrinkDuration, 1)
+        local glowA = math.max(0, 1 - collapseT * 0.55)
+        local cx = State.X + State.W / 2
+        local cy = State.Y + State.H / 2
+        Circle(cx, cy, math.max(3, math.min(State.W, State.H) * 0.18),
+               State.Theme.Accent, 29, true, 1, 28, 0.10 * glowA)
+        Circle(cx, cy, 2, State.Theme.Text, 30, true, 1, 16, 0.62 * glowA)
+        State.ApplyInputState(false)
         HideUnused()
         return
     end
@@ -6209,12 +6434,14 @@ local function Render()
         local t = math.min(State.Startup.Time / State.Startup.PopDuration, 1)
         local flash = (1 - t) * (1 - t)
         if flash > 0.002 then
-            local flashW = math.max(18, math.min(State.W * 0.22, 90 + 70 * t))
-            Rect(State.X + (State.W - flashW) / 2,
-                 State.Y + State.H / 2 - 1,
-                 flashW, 2, State.Theme.TextDim,
-                 45, 1, 0.34 * flash)
+            local cx = State.X + State.W / 2
+            local cy = State.Y + State.H / 2
+            Circle(cx, cy, 4 + 12 * t, State.Theme.Accent,
+                   45, true, 1, 28, 0.10 * flash)
+            Circle(cx, cy, 2, State.Theme.Text,
+                   46, true, 1, 16, 0.42 * flash)
         end
+        State.ApplyInputState(false)
         HideUnused()
         return
     end
@@ -6235,6 +6462,7 @@ local function Render()
         -- HOTKEYS/PERFORMANCE. They remain visible, but cannot be dragged
         -- until the main window is open again.
         DrawHUDBoxes()
+        State.ApplyInputState(false)
         HideUnused()
         return
     end
@@ -6287,6 +6515,10 @@ local function Render()
 
     -- resize handle is topmost interactive
     DrawResizeHandle()
+
+    -- Exact INSui placement: apply input ownership after the main window work
+    -- and immediately before the final per-frame cleanup.
+    State.ApplyInputState(false)
 
     -- hide unused drawing objects
     HideUnused()
@@ -6780,9 +7012,12 @@ local function EnsureGlobalSettingsTab(library)
         savedConfigs:SetValue(found and wanted or names[1], true)
     end
 
-    Controls.Button(configs, {
-        Title = "Save config",
+    local configActions = InlineRow.new(configs, {1, 1, 1})
+
+    Controls.Button(configActions, {
+        Title = "",
         ButtonText = "Save",
+        Variant = "primary",
         Callback = function()
             local name = configNameBox:GetValue()
             name = string.gsub(tostring(name or "default"), "[^%w_%-]", "_")
@@ -6801,8 +7036,8 @@ local function EnsureGlobalSettingsTab(library)
         end,
     })
 
-    Controls.Button(configs, {
-        Title = "Load config",
+    Controls.Button(configActions, {
+        Title = "",
         ButtonText = "Load",
         Callback = function()
             local name = savedConfigs:GetValue()
@@ -6814,9 +7049,10 @@ local function EnsureGlobalSettingsTab(library)
         end,
     })
 
-    Controls.Button(configs, {
-        Title = "Delete config",
+    Controls.Button(configActions, {
+        Title = "",
         ButtonText = "Delete",
+        Variant = "danger",
         Callback = function()
             local name = savedConfigs:GetValue()
             if name and name ~= "None" and library.DeleteConfig then
@@ -6857,8 +7093,60 @@ function Library:CreateWindow(opts)
     State.WindowTitle = tostring(opts.Title or opts.title or opts.Name or opts.name or State.WindowTitle or "Window")
     State.WindowSubtitle = tostring(opts.Subtitle or opts.subtitle or "")
 
-    local logoSource = opts.Logo or opts.logo
-    if logoSource ~= nil and logoSource ~= State.LogoSource then
+    -- Resolve the actual Roblox experience name once when the window is built.
+    -- game.GameId is the universe/experience id; game.PlaceId identifies only
+    -- the current place. Matcha can usually access Roblox's public Games API
+    -- even when MarketplaceService:GetProductInfo is unavailable.
+    State.ShowGameName = (opts.ShowGameName ~= false and opts.showGameName ~= false)
+    State.ShowLogo = (opts.ShowLogo ~= false and opts.showLogo ~= false)
+    local customGameName = opts.GameName or opts.gameName
+    if customGameName ~= nil then
+        State.GameName = tostring(customGameName)
+    else
+        local resolvedName = nil
+
+        if tonumber(game.GameId) and tonumber(game.GameId) > 0 then
+            local ok, body = pcall(function()
+                return game:HttpGet(
+                    "https://games.roblox.com/v1/games?universeIds=" .. tostring(game.GameId)
+                )
+            end)
+
+            if ok and type(body) == "string" and body ~= "" then
+                local decodedOk, decoded = pcall(function()
+                    return game:GetService("HttpService"):JSONDecode(body)
+                end)
+                if decodedOk and type(decoded) == "table"
+                   and type(decoded.data) == "table"
+                   and type(decoded.data[1]) == "table"
+                   and decoded.data[1].name then
+                    resolvedName = tostring(decoded.data[1].name)
+                end
+            end
+        end
+
+        if not resolvedName then
+            local ok, info = pcall(function()
+                return game:GetService("MarketplaceService"):GetProductInfo(
+                    game.PlaceId,
+                    Enum.InfoType.Asset
+                )
+            end)
+            if ok and type(info) == "table" and info.Name then
+                resolvedName = tostring(info.Name)
+            end
+        end
+
+        State.GameName = resolvedName or ("PLACE " .. tostring(game.PlaceId))
+    end
+
+    local logoSource = opts.Logo
+    if logoSource == nil then logoSource = opts.logo end
+    if logoSource == false or State.ShowLogo == false then
+        HidePicture(State.Logo)
+        State.Logo = nil
+        State.LogoSource = nil
+    elseif logoSource ~= nil and logoSource ~= State.LogoSource then
         HidePicture(State.Logo)
         State.LogoSource = logoSource
         State.Logo = LoadPicture(logoSource, "logo")
@@ -6923,15 +7211,22 @@ function Library:CreateWindow(opts)
             Size = splash.Size or splash.size,
             Image = splash.Image or splash.image,
             Title = splash.Title or splash.title,
-            LogoSize = splash.LogoSize or splash.logoSize or splash.ImageSize or splash.imageSize or 50,
+            LogoSize = splash.LogoSize or splash.logoSize or splash.ImageSize or splash.imageSize or 56,
+            ShowLogo = splash.ShowLogo ~= false and splash.showLogo ~= false,
+            ShowGameName = splash.ShowGameName ~= false and splash.showGameName ~= false,
+            Border = splash.Border ~= false and splash.border ~= false,
+            AccentBar = splash.AccentBar ~= false and splash.accentBar ~= false,
+            FooterAccent = splash.FooterAccent ~= false and splash.footerAccent ~= false,
+            CornerRadius = splash.CornerRadius or splash.cornerRadius or 14,
             TextFade = textFadeValue,
             BackgroundImage = splash.BackgroundImage or splash.backgroundImage,
             BackgroundOpacity = splash.BackgroundOpacity or splash.backgroundOpacity or 0.22,
         })
     end
+    State.ApplyInputState(true)
     return self
 end
-Library.Version       = "1.2.7"
+Library.Version       = "1.4.1"
 Library.Themes         = Themes
 Library.Layout         = Layout
 Library.State          = State
@@ -6981,6 +7276,39 @@ function Library:SelectTab(name)
     SetActiveTabByName(name)
 end
 
+-- defaults ------------------------------------------------------------------
+function Library:ResetDefaults()
+    local function resetControl(ctrl)
+        if not ctrl or not ctrl.SetValue then return end
+        if ctrl.Kind == "RangeSlider" then
+            if ctrl.DeclaredDefaultLow ~= nil and ctrl.DeclaredDefaultHigh ~= nil then
+                ctrl:SetValue(ctrl.DeclaredDefaultLow, ctrl.DeclaredDefaultHigh)
+            end
+        elseif ctrl.DeclaredDefault ~= nil then
+            ctrl:SetValue(ctrl.DeclaredDefault)
+        end
+    end
+
+    for _, tab in ipairs(State.Tabs) do
+        for _, row in ipairs(tab.Rows or {}) do
+            if IsSection(row) then
+                for _, child in ipairs(row.Rows or {}) do
+                    if getmetatable(child) == InlineRow then
+                        for _, ctrl in ipairs(child.Cells or {}) do resetControl(ctrl) end
+                    else
+                        resetControl(child)
+                    end
+                end
+            elseif getmetatable(row) == InlineRow then
+                for _, ctrl in ipairs(row.Cells or {}) do resetControl(ctrl) end
+            else
+                resetControl(row)
+            end
+        end
+    end
+    return self
+end
+
 -- configs -------------------------------------------------------------------
 function Library:SaveConfig(name)
     name = string.gsub(tostring(name or "default"), "[^%w_%-]", "_")
@@ -7005,7 +7333,7 @@ function Library:SaveConfig(name)
         if not ctrl or not ctrl.GetValue then return end
         if ctrl.Kind ~= "Toggle" and ctrl.Kind ~= "Slider"
            and ctrl.Kind ~= "RangeSlider" and ctrl.Kind ~= "Dropdown"
-           and ctrl.Kind ~= "Radio" then return end
+           and ctrl.Kind ~= "Radio" and ctrl.Kind ~= "Segmented" then return end
         local key = ctrl.ConfigKey or path
         local ok, a, b = pcall(function() return ctrl:GetValue() end)
         if ok then
@@ -7226,16 +7554,30 @@ end
 -- lifecycle ----------------------------------------------------------------
 function Library:Toggle()   ToggleUI() end
 function Library:Show()     State.Open = true end
-function Library:Hide()     State.Open = false; ClearFocus(); State.SyncGameInput(true) end
+function Library:Hide()     State.Open = false; ClearFocus() end
 function Library:StartStartup(opts) StartStartup(opts) end
 
 function Library:IsAlive() return State.Alive end
 
+function Library:OnDestroy(callback)
+    if type(callback) == "function" then
+        State.DestroyCallbacks[#State.DestroyCallbacks + 1] = callback
+    end
+    return self
+end
+
 function Library:Destroy()
+    if not State.Alive then return end
     State.Alive = false
+
+    for i = 1, #State.DestroyCallbacks do
+        pcall(State.DestroyCallbacks[i])
+    end
+    State.DestroyCallbacks = {}
+
     ClearFocus()
     State.InputSent = true
-    if type(setrobloxinput) == "function" then pcall(setrobloxinput, true) end
+    if type(setrobloxinput) == "function" then setrobloxinput(true) end
     ClearPool()
     CancelCapture()
 end
@@ -7270,6 +7612,9 @@ do
         AttachControl(parentType, "AddButton",      "Button")
         AttachControl(parentType, "AddToggle",      "Toggle")
         AttachControl(parentType, "AddRadio",       "Radio")
+        AttachControl(parentType, "AddSegmented",   "Segmented")
+        AttachControl(parentType, "AddProgress",    "Progress")
+        AttachControl(parentType, "AddStatus",      "Status")
         AttachControl(parentType, "AddSlider",      "Slider")
         AttachControl(parentType, "AddRangeSlider", "RangeSlider")
         AttachControl(parentType, "AddDropdown",    "Dropdown")
@@ -7298,16 +7643,16 @@ do
     end
 
     for _, ctrlName in ipairs({
-        "Label", "Divider", "Toggle", "Radio", "Slider", "RangeSlider",
-        "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
+        "Label", "Divider", "Toggle", "Radio", "Segmented", "Progress", "Status",
+        "Slider", "RangeSlider", "Dropdown", "Keybind", "ColorPicker", "Button"
     }) do
         AttachControl(InlineRow, "Add" .. ctrlName, ctrlName)
     end
 
     -- [FIX] allow chaining control creation: `row:AddToggle({}):AddToggle({})`
     for _, ctrlName in ipairs({
-        "Label", "Divider", "Toggle", "Radio", "Slider", "RangeSlider",
-        "Dropdown", "Keybind", "Textbox", "ColorPicker", "Button"
+        "Label", "Divider", "Toggle", "Radio", "Segmented", "Progress", "Status",
+        "Slider", "RangeSlider", "Dropdown", "Keybind", "ColorPicker", "Button"
     }) do
         local ctor = Controls[ctrlName]
         if ctor then
@@ -7364,7 +7709,7 @@ end)
 
 
 
-Library.Version = "1.2.7"
+Library.Version = "1.4.1"
 
 -- Public exports.
 -- The returned Library table is the preferred API. UI and DrawingUI are also
