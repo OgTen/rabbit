@@ -1098,12 +1098,40 @@ AddKey("Slash",    0xBF, "/", "?")
 AddKey("Backslash",0xDC, "\\", "|")
 AddKey("Grave",    0xC0, "`", "~")
 
+local ActiveKeyNames = {}
+local ActiveKeySet = {}
+
+local function TrackKeyName(name)
+    if not name then return end
+    for segment in string.gmatch(tostring(name), "[^+]+") do
+        local keyName = string.upper(segment)
+        if Keys[keyName] and not ActiveKeySet[keyName] then
+            ActiveKeySet[keyName] = true
+            ActiveKeyNames[#ActiveKeyNames + 1] = keyName
+        end
+    end
+end
+
+local function ReadOneKey(k)
+    local held = iskeypressed(k.Code)
+    k.Click = held and not k.Held
+    k.Held = held
+end
+
 local function ReadKeys()
-    for i = 1, #KeyList do
-        local k = KeyList[i]
-        local held = iskeypressed(k.Code)
-        k.Click = held and not k.Held
-        k.Held = held
+    -- Arbitrary-key capture/text editing needs the full keyboard. Normal UI
+    -- operation polls only keys that Nexa actually uses.
+    if State.Focus ~= nil or State.Capture ~= nil then
+        for i = 1, #KeyList do ReadOneKey(KeyList[i]) end
+        return
+    end
+
+    for i = 1, #KeyList do KeyList[i].Click = false end
+    TrackKeyName(State.MenuKey)
+
+    for i = 1, #ActiveKeyNames do
+        local k = Keys[ActiveKeyNames[i]]
+        if k then ReadOneKey(k) end
     end
 end
 
@@ -3131,9 +3159,11 @@ function Base.New(kind, parent, opts)
         _listeners  = {},
         _hover      = 0,
         _press      = 0,
+        Accessories = {},
+        _isAccessory = opts._Accessory == true,
     }, Base)
 
-    if parent then
+    if parent and not self._isAccessory then
         parent.Rows = parent.Rows or {}
         if parent.AddRow then
             parent:AddRow(self)
@@ -4191,6 +4221,35 @@ local function InputSection(section, x, y, w)
     end
 end
 
+local function AccessoryWidth(ctrl)
+    if ctrl.Kind == "ColorPicker" then return 30 end
+    if ctrl.Kind == "Keybind" then
+        local display = ctrl._listening and "..." or KeyLabel.Format(ctrl.Value)
+        return math.max(42, TextWidth(display, Layout.TextSize, Fonts.Monospace) + 22)
+    end
+    return 0
+end
+
+local function LayoutAccessories(row, x, y, w, inputOnly)
+    local list = row.Accessories or {}
+    if #list == 0 then return w end
+
+    local right = x + w
+    for i = #list, 1, -1 do
+        local ctrl = list[i]
+        if not ctrl.Hidden then
+            local aw = AccessoryWidth(ctrl)
+            right = right - aw
+            local oldTitle = ctrl.Title
+            ctrl.Title = ""
+            if inputOnly then ctrl:Input(right, y, aw) else ctrl:Draw(right, y, aw) end
+            ctrl.Title = oldTitle
+            right = right - 6
+        end
+    end
+    return math.max(1, right - x)
+end
+
 function DrawRow(row, x, y, w)
     if row.Hidden then return 0 end
 
@@ -4218,8 +4277,19 @@ function DrawRow(row, x, y, w)
     end
 
     if row.Draw then
+        local contentW = w
+        if row.Accessories and #row.Accessories > 0 then
+            local reserved = 0
+            for _, accessory in ipairs(row.Accessories) do
+                if not accessory.Hidden then reserved = reserved + AccessoryWidth(accessory) + 6 end
+            end
+            contentW = math.max(1, w - reserved)
+        end
         local ok, err = pcall(function()
-            row:Draw(x, y, w)
+            row:Draw(x, y, contentW)
+            if row.Accessories and #row.Accessories > 0 then
+                LayoutAccessories(row, x, y, w, false)
+            end
         end)
         if not ok then
             if not row._drawErrorShown then
@@ -4259,7 +4329,18 @@ function InputRow(row, x, y, w)
     end
 
     if row.Input then
-        row:Input(x, y, w)
+        local contentW = w
+        if row.Accessories and #row.Accessories > 0 then
+            local reserved = 0
+            for _, accessory in ipairs(row.Accessories) do
+                if not accessory.Hidden then reserved = reserved + AccessoryWidth(accessory) + 6 end
+            end
+            contentW = math.max(1, w - reserved)
+        end
+        row:Input(x, y, contentW)
+        if row.Accessories and #row.Accessories > 0 then
+            LayoutAccessories(row, x, y, w, true)
+        end
         return row.Height or Layout.RowHeight
     end
 
@@ -4785,12 +4866,17 @@ Register("Keybind", function(parent, opts)
     opts = opts or {}
     local self = Base.New("Keybind", parent, opts)
     self.Value    = opts.Default or "none"    -- stored as lowercase string, e.g. "q", "f1", "mb1"
-    self.Callback = opts.Callback
+    self.Callback = opts.Callback              -- assignment changed (legacy)
+    self.PressedCallback = opts.Pressed or opts.OnPressed or opts.PressCallback
+    self.ReleasedCallback = opts.Released or opts.OnReleased
     self.Mode     = opts.Mode or "Hold"       -- "Hold" | "Toggle" | "Always"
     self.Height   = 28
 
     self._listening = false
     self._chipAnim = 0
+    self._bindHeld = false
+    self._bindToggle = false
+    TrackKeyName(self.Value)
 
     function self:GetValue() return self.Value end
 
@@ -4799,6 +4885,7 @@ Register("Keybind", function(parent, opts)
         v = string.lower(v)
         if self.Value == v then return end
         self.Value = v
+        TrackKeyName(v)
         if not silent then
             if self.Callback then pcall(self.Callback, v) end
             self:_Fire(v)
@@ -6359,6 +6446,8 @@ end
 
 local LastHotkeyState = false
 
+local TickKeybindCallbacks
+
 local function Render()
     -- Startup owns the first render. Never draw the full window before
     -- CreateWindow has explicitly started the startup sequence.
@@ -6371,6 +6460,7 @@ local function Render()
     -- read inputs
     ReadInput()
     ReadKeys()
+    TickKeybindCallbacks()
 
     -- measure dt
     local now = os.clock()
@@ -6599,12 +6689,43 @@ local function CollectKeybinds()
             elseif row.Kind == "Keybind" then
                 out[#out + 1] = { Path = prefix .. (row.Title ~= "" and row.Title or "Keybind"), Title = (row.Title ~= "" and row.Title or "Keybind"), Row = row }
             end
+            if row.Accessories then
+                for _, ctrl in ipairs(row.Accessories) do
+                    if ctrl.Kind == "Keybind" then
+                        local title = ctrl.Title ~= "" and ctrl.Title or (row.Title ~= "" and row.Title or "Keybind")
+                        out[#out + 1] = { Path = prefix .. title, Title = title, Row = ctrl }
+                    end
+                end
+            end
         end
     end
     for _, tab in ipairs(State.Tabs) do
         walk(tab, tab.Name .. "/")
     end
     return out
+end
+
+TickKeybindCallbacks = function()
+    local list = CollectKeybinds()
+    for i = 1, #list do
+        local row = list[i].Row
+        if row and row.Enabled ~= false and row.Value and row.Value ~= "none" then
+            TrackKeyName(row.Value)
+            local held = Library:IsBindHeld(row.Value)
+            local clicked = Library:IsBindClicked(row.Value)
+            if clicked then
+                if row.Mode == "Toggle" then row._bindToggle = not row._bindToggle end
+                if row.PressedCallback then
+                    task.spawn(row.PressedCallback, row.Value,
+                               row.Mode == "Toggle" and row._bindToggle or true)
+                end
+            end
+            if row._bindHeld and not held and row.ReleasedCallback then
+                task.spawn(row.ReleasedCallback, row.Value)
+            end
+            row._bindHeld = held
+        end
+    end
 end
 
 local KeybindHUD = {
@@ -7677,13 +7798,39 @@ do
         AttachControl(InlineRow, "Add" .. ctrlName, ctrlName)
     end
 
+    -- Keybinds and color pickers can be attached to an existing control.
+    -- `control:AddKeybind({...})` / `control:AddColorPicker({...})` are inline
+    -- by default. Set Inline=false or Standalone=true for the old full row.
+    local function AddAccessory(host, ctorName, opts)
+        opts = opts or {}
+        if opts.Inline == false or opts.Standalone == true then
+            return Controls[ctorName](host.Parent, opts)
+        end
+        local copy = {}
+        for k, v in pairs(opts) do copy[k] = v end
+        copy._Accessory = true
+        local obj = Controls[ctorName](host.Parent, copy)
+        host.Accessories = host.Accessories or {}
+        host.Accessories[#host.Accessories + 1] = obj
+        obj.Host = host
+        return obj
+    end
+
+    Base.AddKeybind = function(self, opts)
+        return AddAccessory(self, "Keybind", opts)
+    end
+
+    Base.AddColorPicker = function(self, opts)
+        return AddAccessory(self, "ColorPicker", opts)
+    end
+
     -- [FIX] allow chaining control creation: `row:AddToggle({}):AddToggle({})`
     for _, ctrlName in ipairs({
         "Label", "Divider", "Toggle", "Radio", "Segmented", "Progress", "Status",
         "Slider", "RangeSlider", "Dropdown", "Keybind", "ColorPicker", "Button"
     }) do
         local ctor = Controls[ctrlName]
-        if ctor then
+        if ctor and ctrlName ~= "Keybind" and ctrlName ~= "ColorPicker" then
             Base["Add" .. ctrlName] = function(self, opts)
                 local obj = ctor(self.Parent, opts)
                 return obj
@@ -7737,7 +7884,7 @@ end)
 
 
 
-Library.Version = "1.5.1"
+Library.Version = "1.6.0"
 
 -- Public exports.
 -- Nexa is the canonical public API. Legacy aliases are retained for scripts
