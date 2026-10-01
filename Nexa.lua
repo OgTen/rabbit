@@ -4147,10 +4147,13 @@ local function DrawSection(section, x, y, w)
     end
 end
 
-local function InputSection(section)
-    local x = section._layoutX or 0
-    local y = section._layoutY or 0
-    local w = section._layoutW or 0
+local function InputSection(section, x, y, w)
+    -- Input must use the exact current scrolled geometry from InputContent.
+    -- Cached draw geometry can be one frame/stage behind after scrolling,
+    -- which makes visible controls click controls at their pre-scroll Y.
+    x = x or section._layoutX or 0
+    y = y or section._layoutY or 0
+    w = w or section._layoutW or 0
     local headerH = GetSectionHeaderHeight(section)
 
     if MouseIn(x, y, w, headerH) and Input.Click then
@@ -4246,7 +4249,7 @@ function InputRow(row, x, y, w)
     if row.Hidden then return 0 end
 
     if IsSection(row) then
-        InputSection(row)
+        InputSection(row, x, y, w)
         return row._layoutH or MeasureSection(row, w)
     end
 
@@ -5598,7 +5601,7 @@ local function InputContent()
         local viewportBottom = Geometry.ContentY + Geometry.ContentH
         if item.kind == "section" then
             if y + h >= viewportTop and y <= viewportBottom then
-                InputSection(row)
+                InputSection(row, item.x, y, item.w)
             end
         elseif y >= viewportTop and (y + h) <= viewportBottom then
             InputRow(row, item.x, y, item.w)
@@ -7734,7 +7737,7 @@ end)
 
 
 
-Library.Version = "1.5.0"
+Library.Version = "1.5.1"
 
 -- Public exports.
 -- Nexa is the canonical public API. Legacy aliases are retained for scripts
