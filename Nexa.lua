@@ -1098,40 +1098,43 @@ AddKey("Slash",    0xBF, "/", "?")
 AddKey("Backslash",0xDC, "\\", "|")
 AddKey("Grave",    0xC0, "`", "~")
 
-local ActiveKeyNames = {}
-local ActiveKeySet = {}
+Keys._ActiveNames = Keys._ActiveNames or {}
+Keys._ActiveSet = Keys._ActiveSet or {}
 
-local function TrackKeyName(name)
+function Keys.Track(name)
     if not name then return end
     for segment in string.gmatch(tostring(name), "[^+]+") do
         local keyName = string.upper(segment)
-        if Keys[keyName] and not ActiveKeySet[keyName] then
-            ActiveKeySet[keyName] = true
-            ActiveKeyNames[#ActiveKeyNames + 1] = keyName
+        if Keys[keyName] and not Keys._ActiveSet[keyName] then
+            Keys._ActiveSet[keyName] = true
+            Keys._ActiveNames[#Keys._ActiveNames + 1] = keyName
         end
     end
-end
-
-local function ReadOneKey(k)
-    local held = iskeypressed(k.Code)
-    k.Click = held and not k.Held
-    k.Held = held
 end
 
 local function ReadKeys()
     -- Arbitrary-key capture/text editing needs the full keyboard. Normal UI
     -- operation polls only keys that Nexa actually uses.
     if State.Focus ~= nil or State.Capture ~= nil then
-        for i = 1, #KeyList do ReadOneKey(KeyList[i]) end
+        for i = 1, #KeyList do
+            local k = KeyList[i]
+            local held = iskeypressed(k.Code)
+            k.Click = held and not k.Held
+            k.Held = held
+        end
         return
     end
 
     for i = 1, #KeyList do KeyList[i].Click = false end
-    TrackKeyName(State.MenuKey)
+    Keys.Track(State.MenuKey)
 
-    for i = 1, #ActiveKeyNames do
-        local k = Keys[ActiveKeyNames[i]]
-        if k then ReadOneKey(k) end
+    for i = 1, #Keys._ActiveNames do
+        local k = Keys[Keys._ActiveNames[i]]
+        if k then
+            local held = iskeypressed(k.Code)
+            k.Click = held and not k.Held
+            k.Held = held
+        end
     end
 end
 
@@ -4221,7 +4224,7 @@ local function InputSection(section, x, y, w)
     end
 end
 
-local function AccessoryWidth(ctrl)
+function Base.AccessoryWidth(ctrl)
     if ctrl.Kind == "ColorPicker" then return 30 end
     if ctrl.Kind == "Keybind" then
         local display = ctrl._listening and "..." or KeyLabel.Format(ctrl.Value)
@@ -4230,7 +4233,7 @@ local function AccessoryWidth(ctrl)
     return 0
 end
 
-local function LayoutAccessories(row, x, y, w, inputOnly)
+function Base.LayoutAccessories(row, x, y, w, inputOnly)
     local list = row.Accessories or {}
     if #list == 0 then return w end
 
@@ -4238,7 +4241,7 @@ local function LayoutAccessories(row, x, y, w, inputOnly)
     for i = #list, 1, -1 do
         local ctrl = list[i]
         if not ctrl.Hidden then
-            local aw = AccessoryWidth(ctrl)
+            local aw = Base.AccessoryWidth(ctrl)
             right = right - aw
             local oldTitle = ctrl.Title
             ctrl.Title = ""
@@ -4281,14 +4284,14 @@ function DrawRow(row, x, y, w)
         if row.Accessories and #row.Accessories > 0 then
             local reserved = 0
             for _, accessory in ipairs(row.Accessories) do
-                if not accessory.Hidden then reserved = reserved + AccessoryWidth(accessory) + 6 end
+                if not accessory.Hidden then reserved = reserved + Base.AccessoryWidth(accessory) + 6 end
             end
             contentW = math.max(1, w - reserved)
         end
         local ok, err = pcall(function()
             row:Draw(x, y, contentW)
             if row.Accessories and #row.Accessories > 0 then
-                LayoutAccessories(row, x, y, w, false)
+                Base.LayoutAccessories(row, x, y, w, false)
             end
         end)
         if not ok then
@@ -4333,13 +4336,13 @@ function InputRow(row, x, y, w)
         if row.Accessories and #row.Accessories > 0 then
             local reserved = 0
             for _, accessory in ipairs(row.Accessories) do
-                if not accessory.Hidden then reserved = reserved + AccessoryWidth(accessory) + 6 end
+                if not accessory.Hidden then reserved = reserved + Base.AccessoryWidth(accessory) + 6 end
             end
             contentW = math.max(1, w - reserved)
         end
         row:Input(x, y, contentW)
         if row.Accessories and #row.Accessories > 0 then
-            LayoutAccessories(row, x, y, w, true)
+            Base.LayoutAccessories(row, x, y, w, true)
         end
         return row.Height or Layout.RowHeight
     end
@@ -4876,7 +4879,7 @@ Register("Keybind", function(parent, opts)
     self._chipAnim = 0
     self._bindHeld = false
     self._bindToggle = false
-    TrackKeyName(self.Value)
+    Keys.Track(self.Value)
 
     function self:GetValue() return self.Value end
 
@@ -4885,7 +4888,7 @@ Register("Keybind", function(parent, opts)
         v = string.lower(v)
         if self.Value == v then return end
         self.Value = v
-        TrackKeyName(v)
+        Keys.Track(v)
         if not silent then
             if self.Callback then pcall(self.Callback, v) end
             self:_Fire(v)
@@ -6446,8 +6449,6 @@ end
 
 local LastHotkeyState = false
 
-local TickKeybindCallbacks
-
 local function Render()
     -- Startup owns the first render. Never draw the full window before
     -- CreateWindow has explicitly started the startup sequence.
@@ -6460,7 +6461,7 @@ local function Render()
     -- read inputs
     ReadInput()
     ReadKeys()
-    TickKeybindCallbacks()
+    State.TickKeybindCallbacks()
 
     -- measure dt
     local now = os.clock()
@@ -6705,12 +6706,12 @@ local function CollectKeybinds()
     return out
 end
 
-TickKeybindCallbacks = function()
+function State.TickKeybindCallbacks()
     local list = CollectKeybinds()
     for i = 1, #list do
         local row = list[i].Row
         if row and row.Enabled ~= false and row.Value and row.Value ~= "none" then
-            TrackKeyName(row.Value)
+            Keys.Track(row.Value)
             local held = Library:IsBindHeld(row.Value)
             local clicked = Library:IsBindClicked(row.Value)
             if clicked then
@@ -7884,7 +7885,7 @@ end)
 
 
 
-Library.Version = "1.6.0"
+Library.Version = "1.6.1"
 
 -- Public exports.
 -- Nexa is the canonical public API. Legacy aliases are retained for scripts
